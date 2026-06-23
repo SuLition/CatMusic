@@ -4,9 +4,7 @@ import type {
   AppSettings,
   AudioSourcePreset,
   AudioSourcePresetId,
-  ColorSetting,
   SolidSpectrumCircleSettings,
-  ThreeLayerRingColors,
   ThreeLayerRingSettings,
 } from "../ipc/types";
 import {
@@ -105,9 +103,6 @@ export function createSettingsView(
     const selectedSpecificSettings = currentSettings.animationType === "rainbow-ball"
       ? renderSolidSpectrumCircleSettings(circleSettings)
       : renderThreeLayerRingSettings(ringSettings);
-    const selectedColorSettings = currentSettings.animationType === "rainbow-ball"
-      ? ""
-      : renderThreeLayerRingColors(ringSettings.colors);
 
     panel.innerHTML = `
       <div class="settings-section">
@@ -129,10 +124,6 @@ export function createSettingsView(
       <div class="settings-section">
         ${selectedSpecificSettings}
       </div>
-
-      ${selectedColorSettings
-        ? `<div class="settings-section">${selectedColorSettings}</div>`
-        : ""}
     `;
 
     const animationType = requiredElement<HTMLSelectElement>(panel, "#setting-animation-type");
@@ -164,6 +155,12 @@ export function createSettingsView(
   function renderThreeLayerRingSettings(settings: ThreeLayerRingSettings): string {
     return `
       <h2>&#22278;&#29615;&#21442;&#25968;</h2>
+      <div class="setting-row">
+        <span class="setting-row-title">&#39044;&#35774;&#39118;&#26684;</span>
+        <select id="setting-ring-style" class="setting-control">
+          <option value="obsidian-mint">Obsidian Mint</option>
+        </select>
+      </div>
       ${rangeRow("setting-ring-rhythm-pulse", "&#33410;&#22863;&#33033;&#20914;", 0, 2, 0.05, settings.rhythmPulse, formatScale)}
       ${rangeRow("setting-ring-spectrum-sensitivity", "&#39057;&#35889;&#28789;&#25935;&#24230;", 0.2, 2.5, 0.05, settings.spectrumSensitivity, formatScale)}
     `;
@@ -192,17 +189,16 @@ export function createSettingsView(
     `;
   }
 
-  function renderThreeLayerRingColors(colors: ThreeLayerRingColors): string {
-    return `
-      <h2>&#22278;&#29615;&#39068;&#33394;</h2>
-      ${colorRow("ring-idle", "&#38745;&#40664;", colors.idle)}
-      ${colorRow("ring-rhythm", "&#33410;&#22863;", colors.rhythm)}
-      ${colorRow("ring-low-energy", "&#20302;&#33021;&#37327;", colors.lowEnergy)}
-      ${colorRow("ring-high-energy", "&#39640;&#33021;&#37327;", colors.highEnergy)}
-    `;
-  }
-
   function bindThreeLayerRingControls(): void {
+    const ringStyle = requiredElement<HTMLSelectElement>(panel, "#setting-ring-style");
+    ringStyle.value = currentSettings.animationSettings["three-layer-ring"].ringStyle;
+    ringStyle.addEventListener("change", () => {
+      void commitSettings(withRingSettings(currentSettings, (ring) => ({
+        ...ring,
+        ringStyle: ringStyle.value as ThreeLayerRingSettings["ringStyle"],
+      })));
+    });
+
     bindRingRange("setting-ring-rhythm-pulse", (ring, value) => ({
       ...ring,
       rhythmPulse: value,
@@ -211,11 +207,6 @@ export function createSettingsView(
       ...ring,
       spectrumSensitivity: value,
     }));
-
-    bindRingColorControls("ring-idle", (colors, color) => ({ ...colors, idle: color }));
-    bindRingColorControls("ring-rhythm", (colors, color) => ({ ...colors, rhythm: color }));
-    bindRingColorControls("ring-low-energy", (colors, color) => ({ ...colors, lowEnergy: color }));
-    bindRingColorControls("ring-high-energy", (colors, color) => ({ ...colors, highEnergy: color }));
   }
 
   function bindSolidSpectrumCircleControls(): void {
@@ -463,39 +454,6 @@ export function createSettingsView(
     });
   }
 
-  function bindRingColorControls(
-    id: string,
-    update: (colors: ThreeLayerRingColors, color: ColorSetting) => ThreeLayerRingColors,
-  ): void {
-    bindColorInputs(id, (color) => {
-      void commitSettings(withRingSettings(currentSettings, (ringSettings) => ({
-        ...ringSettings,
-        colors: update(ringSettings.colors, color),
-      })));
-    });
-  }
-
-  function bindColorInputs(id: string, onCommit: (color: ColorSetting) => void): void {
-    const colorInput = requiredElement<HTMLInputElement>(panel, `#setting-color-${id}`);
-    const alphaInput = requiredElement<HTMLInputElement>(panel, `#setting-alpha-${id}`);
-    const alphaOutput = requiredElement<HTMLOutputElement>(panel, `#setting-alpha-${id}-value`);
-
-    alphaInput.addEventListener("input", () => {
-      alphaOutput.textContent = formatPercent(Number(alphaInput.value));
-    });
-
-    const commitColor = (): void => {
-      const nextColor = {
-        color: normalizeColor(colorInput.value),
-        alpha: clamp01(Number(alphaInput.value)),
-      };
-
-      onCommit(nextColor);
-    };
-
-    colorInput.addEventListener("change", commitColor);
-    alphaInput.addEventListener("change", commitColor);
-  }
 }
 
 function rangeRow(
@@ -526,19 +484,6 @@ function checkboxRow(id: string, label: string, checked: boolean): string {
       <input id="${id}" type="checkbox" ${checked ? "checked" : ""} />
       <span>${label}</span>
     </label>
-  `;
-}
-
-function colorRow(id: string, label: string, setting: ColorSetting): string {
-  return `
-    <div class="setting-row setting-color-row">
-      <span class="setting-row-title">${label}</span>
-      <span class="setting-color-control">
-        <input id="setting-color-${id}" type="color" value="${normalizeColor(setting.color)}" aria-label="${label}" />
-        <input id="setting-alpha-${id}" type="range" min="0" max="1" step="0.01" value="${clamp01(setting.alpha)}" aria-label="${label} alpha" />
-        <output id="setting-alpha-${id}-value">${formatPercent(setting.alpha)}</output>
-      </span>
-    </div>
   `;
 }
 
@@ -623,6 +568,10 @@ function formatDegrees(value: number): string {
   return `${Math.round(clamp(value, 0, 360))}\u00b0`;
 }
 
+function formatInteger(value: number): string {
+  return `${Math.round(value)}`;
+}
+
 function formatRangeValue(value: number, format: string | undefined): string {
   if (format === "percent") {
     return formatPercent(value);
@@ -630,6 +579,10 @@ function formatRangeValue(value: number, format: string | undefined): string {
 
   if (format === "degrees") {
     return formatDegrees(value);
+  }
+
+  if (format === "integer") {
+    return formatInteger(value);
   }
 
   return formatScale(value);
@@ -644,21 +597,15 @@ function rangeFormat(formatter: (value: number) => string): string {
     return "degrees";
   }
 
+  if (formatter === formatInteger) {
+    return "integer";
+  }
+
   return "scale";
 }
 
 function formatPixels(value: number): string {
   return `${Math.round(value)}px`;
-}
-
-function normalizeColor(value: string): string {
-  const hex = value.trim();
-
-  if (/^#[0-9a-f]{6}$/i.test(hex)) {
-    return hex.toLowerCase();
-  }
-
-  return "#42d6b5";
 }
 
 function clamp(value: number, min: number, max: number): number {

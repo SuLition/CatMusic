@@ -161,29 +161,6 @@ impl Default for AnimationType {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct ColorSetting {
-    pub color: String,
-    pub alpha: f32,
-}
-
-impl ColorSetting {
-    fn new(color: &'static str, alpha: f32) -> Self {
-        Self {
-            color: color.to_string(),
-            alpha,
-        }
-    }
-}
-
-impl Default for ColorSetting {
-    fn default() -> Self {
-        Self::new("#42d6b5", 0.88)
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
 pub struct AnimationCommonSettings {
     pub response_strength: f32,
     pub opacity: f32,
@@ -198,24 +175,15 @@ impl Default for AnimationCommonSettings {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct ThreeLayerRingColors {
-    pub idle: ColorSetting,
-    pub rhythm: ColorSetting,
-    pub low_energy: ColorSetting,
-    pub high_energy: ColorSetting,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThreeLayerRingStyle {
+    ObsidianMint,
 }
 
-impl Default for ThreeLayerRingColors {
+impl Default for ThreeLayerRingStyle {
     fn default() -> Self {
-        Self {
-            idle: ColorSetting::new("#42d6b5", 1.0),
-            rhythm: ColorSetting::new("#f8c15c", 1.0),
-            low_energy: ColorSetting::new("#42d6b5", 1.0),
-            high_energy: ColorSetting::new("#ff528e", 1.0),
-        }
+        Self::ObsidianMint
     }
 }
 
@@ -223,20 +191,17 @@ impl Default for ThreeLayerRingColors {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct ThreeLayerRingSettings {
-    #[serde(default, rename = "responseStrength", skip_serializing)]
-    legacy_response_strength: Option<f32>,
     pub rhythm_pulse: f32,
     pub spectrum_sensitivity: f32,
-    pub colors: ThreeLayerRingColors,
+    pub ring_style: ThreeLayerRingStyle,
 }
 
 impl Default for ThreeLayerRingSettings {
     fn default() -> Self {
         Self {
-            legacy_response_strength: None,
             rhythm_pulse: 1.0,
             spectrum_sensitivity: 1.0,
-            colors: ThreeLayerRingColors::default(),
+            ring_style: ThreeLayerRingStyle::default(),
         }
     }
 }
@@ -336,15 +301,6 @@ impl Default for AppSettings {
 
 impl AppSettings {
     pub fn normalized(mut self) -> Self {
-        if let Some(value) = self
-            .animation_settings
-            .three_layer_ring
-            .legacy_response_strength
-            .take()
-        {
-            self.animation_settings.common.response_strength = value;
-        }
-
         self.animation_settings.common.opacity = self.animation_settings.common.opacity.clamp(0.0, 1.0);
 
         self

@@ -4,6 +4,7 @@ import type {
   AppSettings,
   RainbowBallStyle,
   SolidSpectrumCircleSettings,
+  ThreeLayerRingStyle,
   ThreeLayerRingSettings,
 } from "../ipc/types";
 
@@ -22,24 +23,7 @@ export function createDefaultThreeLayerRingSettings(): ThreeLayerRingSettings {
   return {
     rhythmPulse: 1,
     spectrumSensitivity: 1,
-    colors: {
-      idle: {
-        color: "#42d6b5",
-        alpha: 1,
-      },
-      rhythm: {
-        color: "#f8c15c",
-        alpha: 1,
-      },
-      lowEnergy: {
-        color: "#42d6b5",
-        alpha: 1,
-      },
-      highEnergy: {
-        color: "#ff528e",
-        alpha: 1,
-      },
-    },
+    ringStyle: "obsidian-mint",
   };
 }
 
@@ -79,29 +63,22 @@ export function createDefaultSettings(): AppSettings {
 export function normalizeSettings(settings: AppSettings): AppSettings {
   const defaults = createDefaultSettings();
   const candidate = settings as AppSettings & { floatingSize?: number | string };
-  type LegacyRingSettings = Partial<ThreeLayerRingSettings & Pick<AnimationCommonSettings, "responseStrength">>;
   const commonSettings = candidate.animationSettings?.common;
-  const ringSettings = candidate.animationSettings?.["three-layer-ring"] as LegacyRingSettings | undefined;
+  const ringSettings = candidate.animationSettings?.["three-layer-ring"];
   const circleSettings = candidate.animationSettings?.["rainbow-ball"];
-  const {
-    responseStrength: legacyResponseStrength,
-    ...ringSpecificSettings
-  } = ringSettings ?? {};
   const normalizedCommon = {
     ...defaults.animationSettings.common,
     ...commonSettings,
     responseStrength: commonSettings?.responseStrength
-      ?? legacyResponseStrength
       ?? defaults.animationSettings.common.responseStrength,
     opacity: clamp01(commonSettings?.opacity ?? defaults.animationSettings.common.opacity),
   };
   const normalizedRing = {
     ...defaults.animationSettings["three-layer-ring"],
-    ...ringSpecificSettings,
-    colors: {
-      ...defaults.animationSettings["three-layer-ring"].colors,
-      ...ringSpecificSettings.colors,
-    },
+    rhythmPulse: ringSettings?.rhythmPulse ?? defaults.animationSettings["three-layer-ring"].rhythmPulse,
+    spectrumSensitivity: ringSettings?.spectrumSensitivity
+      ?? defaults.animationSettings["three-layer-ring"].spectrumSensitivity,
+    ringStyle: normalizeThreeLayerRingStyle(ringSettings?.ringStyle),
   };
   const normalizedCircle = {
     ...defaults.animationSettings["rainbow-ball"],
@@ -146,6 +123,15 @@ export function normalizeRainbowBallStyle(value: unknown): RainbowBallStyle {
       return value;
     default:
       return "opal-current";
+  }
+}
+
+export function normalizeThreeLayerRingStyle(value: unknown): ThreeLayerRingStyle {
+  switch (value) {
+    case "obsidian-mint":
+      return value;
+    default:
+      return "obsidian-mint";
   }
 }
 

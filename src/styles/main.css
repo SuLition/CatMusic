@@ -169,17 +169,12 @@ input {
   white-space: nowrap;
 }
 
-.setting-range-control,
-.setting-color-control {
+.setting-range-control {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
   gap: 10px;
   align-items: center;
-}
-
-.setting-color-control {
-  grid-template-columns: 34px minmax(0, 1fr) 44px;
 }
 
 .setting-range-control-with-limits {
@@ -193,8 +188,7 @@ input {
   text-align: center;
 }
 
-.setting-range-control output,
-.setting-color-control output {
+.setting-range-control output {
   color: #dce7f7;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -498,26 +492,10 @@ input {
   overflow: visible;
 }
 
-.visualizer-ring-track {
-  stroke: rgba(244, 247, 251, 0.075);
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.visualizer-ring-track-one {
-  stroke-opacity: 0.6;
-}
-
-.visualizer-ring-track-two {
-  stroke-opacity: 0.52;
-}
-
-.visualizer-ring-track-three {
-  stroke-opacity: 0.48;
-}
-
-.visualizer-ring-rhythm,
-.visualizer-ring-pulse {
+.visualizer-ring-body,
+.visualizer-ring-outer-glow,
+.visualizer-ring-pulse,
+.visualizer-ring-melody-wave {
   transform-box: fill-box;
   transform-origin: center;
   transition:
@@ -527,23 +505,16 @@ input {
     transform 90ms ease-out;
 }
 
-.visualizer-ring-rhythm {
+.visualizer-ring-body,
+.visualizer-ring-outer-glow,
+.visualizer-ring-pulse,
+.visualizer-ring-melody-wave {
   stroke-linecap: round;
 }
 
-.visualizer-ring-pulse {
-  stroke-linecap: round;
-}
-
-.visualizer-ring-spectrum {
-  stroke-linecap: round;
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    opacity 70ms linear,
-    stroke 90ms linear,
-    filter 90ms linear,
-    transform 90ms ease-out;
+.visualizer-ring-melody-wave {
+  pointer-events: none;
+  stroke-linejoin: round;
 }
 
 .visualizer-solid-spectrum-circle {

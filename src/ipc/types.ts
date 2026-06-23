@@ -35,27 +35,17 @@ export type AudioSourcePreset = {
 
 export type AnimationType = "three-layer-ring" | "rainbow-ball";
 
-export type ColorSetting = {
-  color: string;
-  alpha: number;
-};
-
 export type AnimationCommonSettings = {
   responseStrength: number;
   opacity: number;
 };
 
-export type ThreeLayerRingColors = {
-  idle: ColorSetting;
-  rhythm: ColorSetting;
-  lowEnergy: ColorSetting;
-  highEnergy: ColorSetting;
-};
+export type ThreeLayerRingStyle = "obsidian-mint";
 
 export type ThreeLayerRingSettings = {
   rhythmPulse: number;
   spectrumSensitivity: number;
-  colors: ThreeLayerRingColors;
+  ringStyle: ThreeLayerRingStyle;
 };
 
 export type RainbowBallStyle =

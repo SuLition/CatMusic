@@ -2,132 +2,122 @@ import type {
   AnimationCommonSettings,
   AppSettings,
   AudioFeatureFrame,
-  ColorSetting,
   ThreeLayerRingSettings,
+  ThreeLayerRingStyle,
 } from "../ipc/types";
 import {
   createDefaultAnimationCommonSettings,
   createDefaultThreeLayerRingSettings,
+  normalizeThreeLayerRingStyle,
 } from "../settings/settings-store";
 import type { VisualizerAnimation } from "./animation-registry";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+// SVG 基础画布：中心点固定在 100，外扩 margin 给泛光预留空间。
 const CENTER = 100;
 const BASE_VIEWBOX_SIZE = 200;
 const VIEWBOX_GLOW_MARGIN = 28;
 const VIEWBOX_MIN = -VIEWBOX_GLOW_MARGIN;
 const VIEWBOX_SIZE = BASE_VIEWBOX_SIZE + VIEWBOX_GLOW_MARGIN * 2;
 const VIEWBOX_OUTER_EDGE = CENTER + VIEWBOX_GLOW_MARGIN;
-
-// 圆环描边宽度：1 层最宽，3 层最窄。
-// 如果改这里，并且仍希望三环边缘贴紧，需要一起重算下面的基础半径。
-const LAYER_ONE_WIDTH = 24;
-const LAYER_TWO_WIDTH = 10;
-const LAYER_THREE_WIDTH = 5;
-
-// 基础半径，单位是 SVG viewBox 坐标；这三个值决定静止时的整体大小。
-// 当前值让三环刚好贴紧：
-// 1 层外边缘 = 52 + 24 / 2 = 64
-// 2 层内边缘 = 69 - 10 / 2 = 64
-// 2 层外边缘 = 69 + 10 / 2 = 74
-// 3 层内边缘 = 76.5 - 5 / 2 = 74
-// 三个值一起增大，整体圆环变大；一起减小，整体圆环变小。
+// 固定三环布局，不再暴露环数设置。
+const FIXED_RING_COUNT = 3;
+const RING_LAYOUT_GAP = 0;
+// 主体轻微重叠，用来盖住 SVG stroke 贴合处的抗锯齿细线。
+const RING_BODY_SEAM_OVERLAP = 1.1;
+// 动态时相邻环打开的最大净间距。
+const MAX_DYNAMIC_RING_GAP = 8.6;
+// 三个环的静止半径。
 const LAYER_ONE_RADIUS = 52;
-const LAYER_TWO_RADIUS = 69;
-const LAYER_THREE_RADIUS = 76.5;
-
-// 半径平滑速度。数值越大，尺寸越快跟随目标；数值越小，变化越柔和。
-// 接近静音时使用 idle；音频活动较强时使用 dynamic。
+const LAYER_TWO_RADIUS = 72;
+const LAYER_THREE_RADIUS = 85;
+// 三个环的主体宽度：内层最厚，外层接近细线。
+const LAYER_ONE_WIDTH = 32;
+const LAYER_TWO_WIDTH = 16;
+const LAYER_THREE_WIDTH = 2;
+// 泛光与动态外扩边界。
+const SPECTRUM_GLOW_MAX_BLUR = 11;
+const RING_BODY_OUTER_LIMIT = VIEWBOX_OUTER_EDGE - 4;
+// 半径跟随速度：静止更慢，动态更快。
 const IDLE_RADIUS_SMOOTHING = 0.08;
 const DYNAMIC_RADIUS_SMOOTHING = 0.22;
-
-// 静止呼吸效果。period 是一次完整呼吸周期；scale 是正负缩放幅度。
-// 例如 0.035 表示呼吸峰值大约放大/缩小 3.5%。
+// 静止呼吸效果。
 const IDLE_BREATH_PERIOD_MS = 3200;
 const IDLE_BREATH_SCALE = 0.035;
 const IDLE_BREATH_WEIGHT_SMOOTHING = 0.06;
-
-// 音频活动门限。低于 floor 的值视为静止。
-// full 表示活动强度达到 1.0 时对应的输入值。
+// 音频活动门限。
 const DYNAMIC_VOLUME_FLOOR = 0.035;
 const DYNAMIC_SPECTRUM_FLOOR = 0.04;
 const ACTIVITY_VOLUME_FULL = 0.22;
 const ACTIVITY_SPECTRUM_FULL = 0.18;
-
-// 活动强度平滑。attack 控制进入动态响应的速度。
-// release 控制回落到静止状态的速度。
+// 活动强度平滑：attack 控制变强速度，release 控制回落速度。
 const ACTIVITY_ATTACK_SMOOTHING = 0.24;
 const ACTIVITY_RELEASE_SMOOTHING = 0.045;
-
-// 每层独立扩张幅度。这里是调每个环动态缩放半径的主要位置。
-// 公式：扩张量 = 基础半径 * 当前层音频值 * 缩放幅度。
-// 数值越大，该层越容易因为自己的音频数据向外扩。
-// 1 层使用音量/节奏；2 层使用低半段频谱；3 层使用高半段频谱。
-const LAYER_ONE_SCALE_RANGE = 0.16;
-const LAYER_TWO_SCALE_RANGE = 0.18;
-const LAYER_THREE_SCALE_RANGE = 0.20;
-
-// 频谱泛光最大模糊半径；最外层动态半径会按这个值预留裁剪安全区。
-const SPECTRUM_GLOW_MAX_BLUR = 11;
-const LAYER_THREE_MAX_RADIUS = VIEWBOX_OUTER_EDGE - LAYER_THREE_WIDTH / 2 - SPECTRUM_GLOW_MAX_BLUR;
-
-// 三层圆环本体透明度：内层保持 100%，越向外越透明。
-const RING_BODY_OPACITY_LAYER_ONE = 1.0;
-const RING_BODY_OPACITY_LAYER_TWO = 0.78;
-const RING_BODY_OPACITY_LAYER_THREE = 0.56;
-
-// 颜色平滑速度。数值越大，颜色变化越快；数值越小，越不容易看到跳色。
-const COLOR_SMOOTHING = 0.12;
+// 动态半径扩张幅度：外环响应略强。
+const INNER_RING_EXPANSION = 0.13;
+const OUTER_RING_EXPANSION = 0.23;
+// 动态颜色响应：先放大音频值，再增强当前环自身颜色。
+const RING_COLOR_VALUE_GAIN = 1.4;
+const RING_COLOR_BOOST_MAX = 0.5;
+// 最外侧旋律正弦波：melody 越强，闭合波形振幅越大。
+const MELODY_WAVE_POINT_COUNT = 144;
+const MELODY_WAVE_CYCLES = 9;
+const MELODY_WAVE_MAX_AMPLITUDE = 5.2;
+const MELODY_WAVE_RADIUS_GAP = 6;
+const MELODY_WAVE_STROKE_WIDTH = 0.8;
+const MELODY_WAVE_PHASE_SPEED = 1.2;
+const MELODY_WAVE_ATTACK_SMOOTHING = 0.24;
+const MELODY_WAVE_RELEASE_SMOOTHING = 0.08;
 
 type Rgba = [number, number, number, number];
 
-type LayerRadii = {
-  layerOne: number;
-  layerTwo: number;
-  layerThree: number;
+type RingLayout = {
+  index: number;
+  ratio: number;
+  radius: number;
+  width: number;
+  motionScale: number;
+};
+
+type RingColors = {
+  body: string;
+  glow: string;
+};
+
+type RingColorPalette = {
+  color: string;
+};
+
+type RingLayerElements = {
+  body: SVGCircleElement;
+  outerGlow: SVGCircleElement;
 };
 
 class ThreeLayerRingAnimation implements VisualizerAnimation {
   private host: HTMLElement | null = null;
   private svg: SVGSVGElement | null = null;
-  private layerOneTrack: SVGCircleElement | null = null;
-  private layerTwoTrack: SVGCircleElement | null = null;
-  private layerThreeTrack: SVGCircleElement | null = null;
-  private rhythmRing: SVGCircleElement | null = null;
+  private rings: RingLayerElements[] = [];
   private rhythmPulse: SVGCircleElement | null = null;
-  private layerTwoRing: SVGCircleElement | null = null;
-  private layerThreeRing: SVGCircleElement | null = null;
+  private melodyWave: SVGPathElement | null = null;
   private beatImpulse = 0;
-  private layerOneValue = 0;
-  private layerTwoValue = 0;
-  private layerThreeValue = 0;
+  private ringValues: number[] = [];
+  private currentRadii: number[] = [];
+  private melodyWaveValue = 0;
   private activityLevel = 0;
-  private currentColor: Rgba = [66, 214, 181, 0.88];
   private commonSettings: AnimationCommonSettings = createDefaultAnimationCommonSettings();
   private ringSettings: ThreeLayerRingSettings = createDefaultThreeLayerRingSettings();
-  private currentRadii: LayerRadii = {
-    layerOne: LAYER_ONE_RADIUS,
-    layerTwo: LAYER_TWO_RADIUS,
-    layerThree: LAYER_THREE_RADIUS,
-  };
   private idleBreathWeight = 0;
+
   mount(host: HTMLElement): void {
     this.host = host;
     this.host.replaceChildren();
-    this.currentColor = parseColorSetting(this.ringSettings.colors.lowEnergy);
 
     this.svg = svgElement("svg");
     this.svg.setAttribute("viewBox", `${VIEWBOX_MIN} ${VIEWBOX_MIN} ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`);
     this.svg.setAttribute("class", "visualizer-ring");
     this.svg.setAttribute("aria-hidden", "true");
-
-    this.appendLayerTracks();
-    this.rhythmPulse = this.appendCircle("visualizer-ring-pulse", LAYER_ONE_RADIUS, LAYER_ONE_WIDTH);
-    this.rhythmRing = this.appendCircle("visualizer-ring-rhythm", LAYER_ONE_RADIUS, LAYER_ONE_WIDTH);
-    this.layerTwoRing = this.appendCircle("visualizer-ring-spectrum visualizer-ring-spectrum-two", LAYER_TWO_RADIUS, LAYER_TWO_WIDTH);
-    this.layerThreeRing = this.appendCircle("visualizer-ring-spectrum visualizer-ring-spectrum-three", LAYER_THREE_RADIUS, LAYER_THREE_WIDTH);
-
     this.host.append(this.svg);
+    this.rebuildLayers();
     this.renderBlendedLayers(silentFrame(), 0);
   }
 
@@ -157,38 +147,46 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
   }
 
   updateSettings(settings: AppSettings): void {
+    const nextRingSettings = normalizeRingSettings(settings.animationSettings["three-layer-ring"]);
+
     this.commonSettings = normalizeCommonSettings(settings.animationSettings.common);
-    this.ringSettings = normalizeRingSettings(settings.animationSettings["three-layer-ring"]);
+    this.ringSettings = nextRingSettings;
   }
 
   destroy(): void {
     this.host?.replaceChildren();
     this.host = null;
     this.svg = null;
-    this.layerOneTrack = null;
-    this.layerTwoTrack = null;
-    this.layerThreeTrack = null;
-    this.rhythmRing = null;
+    this.rings = [];
     this.rhythmPulse = null;
-    this.layerTwoRing = null;
-    this.layerThreeRing = null;
-    this.layerOneValue = 0;
-    this.layerTwoValue = 0;
-    this.layerThreeValue = 0;
+    this.melodyWave = null;
+    this.beatImpulse = 0;
+    this.ringValues = [];
+    this.currentRadii = [];
+    this.melodyWaveValue = 0;
     this.activityLevel = 0;
-    this.currentColor = parseColorSetting(this.ringSettings.colors.lowEnergy);
-    this.currentRadii = {
-      layerOne: LAYER_ONE_RADIUS,
-      layerTwo: LAYER_TWO_RADIUS,
-      layerThree: LAYER_THREE_RADIUS,
-    };
     this.idleBreathWeight = 0;
   }
 
-  private appendLayerTracks(): void {
-    this.layerOneTrack = this.appendCircle("visualizer-ring-track visualizer-ring-track-one", LAYER_ONE_RADIUS, LAYER_ONE_WIDTH);
-    this.layerTwoTrack = this.appendCircle("visualizer-ring-track visualizer-ring-track-two", LAYER_TWO_RADIUS, LAYER_TWO_WIDTH);
-    this.layerThreeTrack = this.appendCircle("visualizer-ring-track visualizer-ring-track-three", LAYER_THREE_RADIUS, LAYER_THREE_WIDTH);
+  private rebuildLayers(): void {
+    if (!this.svg) {
+      return;
+    }
+
+    this.svg.replaceChildren();
+    const layouts = ringLayouts();
+    this.rings = layouts.map((layout) => this.appendLayer(layout));
+    this.rhythmPulse = this.appendCircle("visualizer-ring-pulse", layouts[0]?.radius ?? 50, layouts[0]?.width ?? 18);
+    this.melodyWave = this.appendPath("visualizer-ring-melody-wave");
+    this.ringValues = Array.from({ length: layouts.length }, () => 0);
+    this.currentRadii = layouts.map((layout) => layout.radius);
+  }
+
+  private appendLayer(layout: RingLayout): RingLayerElements {
+    return {
+      outerGlow: this.appendCircle("visualizer-ring-outer-glow", layout.radius, layout.width),
+      body: this.appendCircle("visualizer-ring-body", layout.radius, layout.width),
+    };
   }
 
   private appendCircle(className: string, radius: number, width: number): SVGCircleElement {
@@ -200,110 +198,163 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
     circle.setAttribute("fill", "none");
     circle.setAttribute("stroke-width", `${width}`);
     circle.setAttribute("pathLength", "1");
+    circle.setAttribute("stroke-linecap", "round");
     this.svg?.append(circle);
     return circle;
   }
 
+  private appendPath(className: string): SVGPathElement {
+    const path = svgElement("path");
+    path.setAttribute("class", className);
+    path.setAttribute("fill", "none");
+    path.setAttribute("pathLength", "1");
+    this.svg?.append(path);
+    return path;
+  }
+
   private renderBlendedLayers(frame: AudioFeatureFrame, activity: number): void {
+    const layouts = ringLayouts();
+    const count = layouts.length;
     const responseStrength = clamp(this.commonSettings.responseStrength, 0.2, 2.5);
     const spectrumSensitivity = clamp(this.ringSettings.spectrumSensitivity, 0.2, 2.5);
     const volume = clamp(frame.volume * responseStrength, 0, 2);
-    const splitIndex = Math.max(1, Math.floor(frame.spectrum.length / 2));
-    const layerTwoEnergy = clamp(
-      spectrumEnergy(frame.spectrum, 0, splitIndex) * responseStrength * spectrumSensitivity,
-      0,
-      2,
-    );
-    const layerThreeEnergy = clamp(
-      spectrumEnergy(frame.spectrum, splitIndex, frame.spectrum.length) * responseStrength * spectrumSensitivity,
-      0,
-      2,
-    );
     const normalizedActivity = clamp01(activity);
-    this.layerOneValue = smoothValue(this.layerOneValue, Math.max(volume, this.beatImpulse) * normalizedActivity);
-    this.layerTwoValue = smoothValue(this.layerTwoValue, layerTwoEnergy * normalizedActivity);
-    this.layerThreeValue = smoothValue(this.layerThreeValue, layerThreeEnergy * normalizedActivity);
+    const spectrumValues = ringSpectrumValues(frame.spectrum, count, responseStrength, spectrumSensitivity);
+    const palette = ringColorPalette(this.ringSettings.ringStyle);
 
-    const dynamicRadii = pushedRadii(this.layerOneValue, this.layerTwoValue, this.layerThreeValue);
+    for (let index = 0; index < count; index += 1) {
+      const target = index === 0
+        ? Math.max(volume, this.beatImpulse) * normalizedActivity
+        : (spectrumValues[index] ?? 0) * normalizedActivity;
+      this.ringValues[index] = smoothValue(this.ringValues[index] ?? 0, target);
+    }
+
     const radiusSmoothing = lerp(IDLE_RADIUS_SMOOTHING, DYNAMIC_RADIUS_SMOOTHING, normalizedActivity);
+    const targetRadii = pushedRadii(layouts, this.ringValues);
     this.idleBreathWeight = smoothNumber(this.idleBreathWeight, 1 - normalizedActivity, IDLE_BREATH_WEIGHT_SMOOTHING);
-    const displayedRadii = this.applyLayerRadii(dynamicRadii, radiusSmoothing);
-    const idleColor = parseColorSetting(this.ringSettings.colors.idle);
-    const dynamicColor = colorForVolume(this.ringSettings, volume);
-    const color = this.smoothColor(mixRgba(idleColor, dynamicColor, normalizedActivity), COLOR_SMOOTHING);
-    const rhythmColor = mixRgba(color, parseColorSetting(this.ringSettings.colors.rhythm), clamp01(this.beatImpulse));
+    const displayedRadii = layouts.map((layout, index) => {
+      const targetRadius = targetRadii[index] ?? layout.radius;
+      const radius = smoothNumber(this.currentRadii[index] ?? layout.radius, targetRadius, radiusSmoothing);
+
+      this.currentRadii[index] = radius;
+      return radius;
+    });
+
+    for (let index = 0; index < count; index += 1) {
+      const layout = layouts[index];
+      const radius = displayedRadii[index] ?? layout.radius;
+      this.renderRingLayer({
+        elements: this.rings[index] ?? null,
+        layout,
+        radius,
+        value: this.ringValues[index] ?? 0,
+        activity: normalizedActivity,
+        colors: colorsForRing(palette, this.ringValues[index] ?? 0),
+      });
+    }
+
+    this.renderMelodyWave(
+      layouts[count - 1],
+      displayedRadii[count - 1] ?? layouts[count - 1]?.radius ?? LAYER_THREE_RADIUS,
+      frame.melody,
+      palette,
+    );
+    this.renderPulse(this.currentRadii[0] ?? layouts[0]?.radius ?? 50, layouts[0], palette, volume, normalizedActivity);
     this.applyBreathTransform(this.idleBreathWeight);
-    this.renderRhythmRing(displayedRadii.layerOne, volume, color, rhythmColor, normalizedActivity);
-    this.renderSpectrumRing(this.layerTwoRing, this.layerTwoValue, color, displayedRadii.layerTwo, normalizedActivity, RING_BODY_OPACITY_LAYER_TWO);
-    this.renderSpectrumRing(this.layerThreeRing, this.layerThreeValue, color, displayedRadii.layerThree, normalizedActivity, RING_BODY_OPACITY_LAYER_THREE);
   }
 
-  private renderRhythmRing(
-    radius: number,
-    volume: number,
-    color: Rgba,
-    rhythmColor: Rgba,
-    activity: number,
-  ): void {
-    const pulseOpacity = clamp01(this.beatImpulse) * (0.22 + clamp01(volume) * 0.28);
-    const rhythmStroke = mixRgba(color, rhythmColor, clamp01(this.beatImpulse * activity));
+  private renderRingLayer(options: {
+    elements: RingLayerElements | null;
+    layout: RingLayout;
+    radius: number;
+    value: number;
+    activity: number;
+    colors: RingColors;
+  }): void {
+    const { elements, layout, radius, value, activity, colors } = options;
 
-    if (this.rhythmRing) {
-      setCircleRadius(this.rhythmRing, radius);
-      this.rhythmRing.style.stroke = rgbaColor(rhythmStroke);
-      this.rhythmRing.style.opacity = `${RING_BODY_OPACITY_LAYER_ONE}`;
-      this.rhythmRing.style.filter = dropShadow(rhythmStroke, 10);
-    }
-
-    if (this.rhythmPulse) {
-      const visiblePulseOpacity = pulseOpacity * activity;
-      setCircleRadius(this.rhythmPulse, radius);
-      this.rhythmPulse.style.stroke = rgbaColor(rhythmColor);
-      this.rhythmPulse.style.opacity = `${visiblePulseOpacity}`;
-      this.rhythmPulse.style.transform = `scale(${1 + clamp(this.beatImpulse, 0, 2) * 0.22})`;
-      this.rhythmPulse.style.filter = visiblePulseOpacity > 0.001
-        ? dropShadow(rhythmColor, 5 + clamp(this.beatImpulse, 0, 2) * 8)
-        : "";
-    }
-  }
-
-  private renderSpectrumRing(
-    ring: SVGCircleElement | null,
-    value: number,
-    color: Rgba,
-    radius: number,
-    activity: number,
-    layerOpacity: number,
-  ): void {
-    if (!ring) {
+    if (!elements) {
       return;
     }
 
     const normalized = clamp01(value);
-    const glow = normalized * activity;
-    setCircleRadius(ring, radius);
-    ring.style.stroke = rgbaColor(mixRgba(color, [255, 255, 255, color[3]], glow * 0.18));
-    ring.style.opacity = `${layerOpacity}`;
-    ring.style.filter = glow > 0.015
-      ? dropShadow(color, 2 + glow * (SPECTRUM_GLOW_MAX_BLUR - 2))
+    const glow = normalized * (0.42 + activity * 0.58);
+    const glowVisibility = Math.sqrt(clamp01(glow));
+    const glowColor = parseColor(colors.glow, 0.86);
+    const bodyWidth = ringBodyWidth(layout.width);
+    const outerGlowWidth = glowWidth(bodyWidth, layout.ratio);
+
+    setCircleRadius(elements.outerGlow, radius);
+    setCircleRadius(elements.body, radius);
+    elements.outerGlow.setAttribute("stroke-width", outerGlowWidth.toFixed(2));
+    elements.body.setAttribute("stroke-width", bodyWidth.toFixed(2));
+
+    elements.outerGlow.style.stroke = rgbaColor(glowColor);
+    elements.outerGlow.style.opacity = (glowVisibility * lerp(0.24, 0.62, glow)).toFixed(3);
+    elements.outerGlow.style.filter = glowVisibility > 0.001
+      ? blurFilter(lerp(2.6, SPECTRUM_GLOW_MAX_BLUR + 2, glow) * lerp(0.82, 1.08, layout.ratio))
+      : "";
+
+    elements.body.style.stroke = colors.body;
+    elements.body.style.opacity = "1";
+    elements.body.style.filter = "";
+  }
+
+  private renderMelodyWave(
+    outerLayout: RingLayout | undefined,
+    outerRadius: number,
+    melody: number | null,
+    palette: RingColorPalette,
+  ): void {
+    if (!this.melodyWave || !outerLayout) {
+      return;
+    }
+
+    const target = melody === null || !Number.isFinite(melody) ? 0 : clamp01(melody);
+    const smoothing = target > this.melodyWaveValue
+      ? MELODY_WAVE_ATTACK_SMOOTHING
+      : MELODY_WAVE_RELEASE_SMOOTHING;
+    this.melodyWaveValue = smoothNumber(this.melodyWaveValue, target, smoothing);
+
+    const strength = smoothStep(this.melodyWaveValue);
+    const amplitude = MELODY_WAVE_MAX_AMPLITUDE * strength;
+    const bodyOuterRadius = outerEdge(outerRadius, ringBodyWidth(outerLayout.width));
+    const safeOuterRadius = VIEWBOX_OUTER_EDGE - MELODY_WAVE_STROKE_WIDTH / 2 - amplitude;
+    const waveRadius = Math.min(bodyOuterRadius + MELODY_WAVE_RADIUS_GAP, safeOuterRadius);
+    const phase = (performance.now() / 1000) * MELODY_WAVE_PHASE_SPEED;
+
+    this.melodyWave.setAttribute("d", melodyWavePath(waveRadius, amplitude, phase));
+    this.melodyWave.setAttribute("stroke-width", (MELODY_WAVE_STROKE_WIDTH + strength * 1.1).toFixed(2));
+    this.melodyWave.style.stroke = boostedRingColor(palette.color, this.melodyWaveValue);
+    this.melodyWave.style.opacity = "1";
+    this.melodyWave.style.filter = strength > 0.001
+      ? blurFilter(0.35 + strength * 1.15)
       : "";
   }
 
-  private applyLayerRadii(target: LayerRadii, smoothing: number): LayerRadii {
-    this.currentRadii = {
-      layerOne: smoothNumber(this.currentRadii.layerOne, target.layerOne, smoothing),
-      layerTwo: smoothNumber(this.currentRadii.layerTwo, target.layerTwo, smoothing),
-      layerThree: smoothNumber(this.currentRadii.layerThree, target.layerThree, smoothing),
-    };
+  private renderPulse(
+    radius: number,
+    firstLayout: RingLayout | undefined,
+    palette: RingColorPalette,
+    volume: number,
+    activity: number,
+  ): void {
+    if (!this.rhythmPulse || !firstLayout) {
+      return;
+    }
 
-    setCircleRadius(this.layerOneTrack, this.currentRadii.layerOne);
-    setCircleRadius(this.layerTwoTrack, this.currentRadii.layerTwo);
-    setCircleRadius(this.layerThreeTrack, this.currentRadii.layerThree);
-    setCircleRadius(this.rhythmRing, this.currentRadii.layerOne);
-    setCircleRadius(this.layerTwoRing, this.currentRadii.layerTwo);
-    setCircleRadius(this.layerThreeRing, this.currentRadii.layerThree);
+    const pulseColor = parseColor(
+      boostedRingColor(palette.color, Math.max(volume, this.beatImpulse)),
+      0.92,
+    );
+    const visiblePulseOpacity = clamp01(this.beatImpulse) * (0.16 + clamp01(volume) * 0.24) * activity;
 
-    return this.currentRadii;
+    setCircleRadius(this.rhythmPulse, radius);
+    this.rhythmPulse.setAttribute("stroke-width", ringBodyWidth(firstLayout.width).toFixed(2));
+    this.rhythmPulse.style.stroke = rgbaColor(pulseColor);
+    this.rhythmPulse.style.opacity = `${visiblePulseOpacity}`;
+    this.rhythmPulse.style.transform = "scale(1)";
+    this.rhythmPulse.style.filter = "";
   }
 
   private applyBreathTransform(weight: number): void {
@@ -311,17 +362,11 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
     const scale = 1 + Math.sin(phase) * IDLE_BREATH_SCALE * clamp01(weight);
     const transform = `scale(${scale.toFixed(4)})`;
 
-    this.layerOneTrack?.style.setProperty("transform", transform);
-    this.layerTwoTrack?.style.setProperty("transform", transform);
-    this.layerThreeTrack?.style.setProperty("transform", transform);
-    this.rhythmRing?.style.setProperty("transform", transform);
-    this.layerTwoRing?.style.setProperty("transform", transform);
-    this.layerThreeRing?.style.setProperty("transform", transform);
-  }
-
-  private smoothColor(targetColor: Rgba, smoothing: number): Rgba {
-    this.currentColor = smoothRgba(this.currentColor, targetColor, smoothing);
-    return this.currentColor;
+    for (const layer of this.rings) {
+      layer.outerGlow.style.transform = transform;
+      layer.body.style.transform = transform;
+    }
+    this.melodyWave?.style.setProperty("transform", transform);
   }
 }
 
@@ -339,6 +384,145 @@ function silentFrame(): AudioFeatureFrame {
     spectrum: Array.from({ length: 32 }, () => 0),
     melody: null,
   };
+}
+
+function ringLayouts(): RingLayout[] {
+  return [
+    fixedRingLayout(0, LAYER_ONE_RADIUS, LAYER_ONE_WIDTH, INNER_RING_EXPANSION),
+    fixedRingLayout(1, LAYER_TWO_RADIUS, LAYER_TWO_WIDTH, lerp(INNER_RING_EXPANSION, OUTER_RING_EXPANSION, 0.5)),
+    fixedRingLayout(2, LAYER_THREE_RADIUS, LAYER_THREE_WIDTH, OUTER_RING_EXPANSION),
+  ];
+}
+
+function fixedRingLayout(index: number, radius: number, width: number, motionScale: number): RingLayout {
+  const ratio = ringRatio(index);
+
+  return {
+    index,
+    ratio,
+    radius,
+    width,
+    motionScale,
+  };
+}
+
+function ringRatio(index: number): number {
+  return index / (FIXED_RING_COUNT - 1);
+}
+
+function pushedRadii(layouts: RingLayout[], values: number[]): number[] {
+  const expansions = layouts.map((layout, index) => (
+    layout.radius * clamp(values[index] ?? 0, 0, 2) * layout.motionScale
+  ));
+  const gaps = layouts.map((layout, index) => {
+    if (index === 0) {
+      return 0;
+    }
+
+    const adjacentEnergy = Math.max(clamp01(values[index - 1] ?? 0), clamp01(values[index] ?? 0));
+
+    // Idle keeps seams closed; audio opens visible gaps.
+    return MAX_DYNAMIC_RING_GAP * smoothStep(adjacentEnergy) * lerp(0.72, 1.18, layout.ratio);
+  });
+  const resolve = (scale: number): number[] => {
+    const radii: number[] = [];
+
+    for (let index = 0; index < layouts.length; index += 1) {
+      const layout = layouts[index];
+      const desiredRadius = layout.radius + (expansions[index] ?? 0) * scale;
+      const previousLayout = layouts[index - 1];
+      const previousRadius = radii[index - 1];
+      const minimumRadius = previousLayout && previousRadius !== undefined
+        ? outerEdge(previousRadius, previousLayout.width) + RING_LAYOUT_GAP + (gaps[index] ?? 0) * scale + layout.width / 2
+        : desiredRadius;
+
+      radii.push(Math.max(desiredRadius, minimumRadius));
+    }
+
+    return radii;
+  };
+  const fits = (radii: number[]): boolean => {
+    const lastLayout = layouts[layouts.length - 1];
+    const lastRadius = radii[radii.length - 1];
+
+    if (!lastLayout || lastRadius === undefined) {
+      return true;
+    }
+
+    return outerEdge(lastRadius, lastLayout.width) <= RING_BODY_OUTER_LIMIT;
+  };
+  const fullRadii = resolve(1);
+
+  if (fits(fullRadii)) {
+    return fullRadii;
+  }
+
+  let low = 0;
+  let high = 1;
+
+  for (let index = 0; index < 12; index += 1) {
+    const middle = (low + high) / 2;
+
+    if (fits(resolve(middle))) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+
+  return resolve(low);
+}
+
+function ringSpectrumValues(
+  spectrum: number[],
+  count: number,
+  responseStrength: number,
+  spectrumSensitivity: number,
+): number[] {
+  return Array.from({ length: count }, (_, index) => {
+    if (index === 0) {
+      return 0;
+    }
+
+    const bandCount = count - 1;
+    const start = Math.floor(((index - 1) / bandCount) * spectrum.length);
+    const end = Math.max(start + 1, Math.floor((index / bandCount) * spectrum.length));
+
+    return clamp(spectrumEnergy(spectrum, start, end) * responseStrength * spectrumSensitivity, 0, 2);
+  });
+}
+
+function ringColorPalette(style: ThreeLayerRingStyle): RingColorPalette {
+  switch (style) {
+    case "obsidian-mint":
+    default:
+      return { color: "#2a8e7c" };
+  }
+}
+
+function colorsForRing(palette: RingColorPalette, value: number): RingColors {
+  const next = boostedRingColor(palette.color, value);
+
+  return {
+    body: next,
+    glow: next,
+  };
+}
+
+function melodyWavePath(radius: number, amplitude: number, phase: number): string {
+  let path = "";
+
+  for (let index = 0; index <= MELODY_WAVE_POINT_COUNT; index += 1) {
+    const ratio = index / MELODY_WAVE_POINT_COUNT;
+    const angle = ratio * Math.PI * 2;
+    const waveRadius = radius + Math.sin(angle * MELODY_WAVE_CYCLES + phase) * amplitude;
+    const x = CENTER + Math.cos(angle) * waveRadius;
+    const y = CENTER + Math.sin(angle) * waveRadius;
+
+    path += `${index === 0 ? "M" : " L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }
+
+  return `${path} Z`;
 }
 
 function audioActivity(volume: number, spectrum: number, rhythm: boolean): number {
@@ -359,41 +543,35 @@ function gateAndNormalize(value: number, floor: number, full: number): number {
   return clamp01((value - floor) / Math.max(0.001, full - floor));
 }
 
-function colorForVolume(settings: ThreeLayerRingSettings, volume: number): Rgba {
-  const low = parseColorSetting(settings.colors.lowEnergy);
-  const high = parseColorSetting(settings.colors.highEnergy);
+function boostedRingColor(color: string, value: number): string {
+  const boost = Math.sqrt(clamp01(value * RING_COLOR_VALUE_GAIN)) * RING_COLOR_BOOST_MAX;
+  const rgba = parseColor(color, 1);
+  const luminance = rgba[0] * 0.299 + rgba[1] * 0.587 + rgba[2] * 0.114;
+  const saturationGain = 1 + boost * 1.45;
+  const brightnessGain = 1 + boost * 0.46;
+  const boosted: Rgba = [
+    (luminance + (rgba[0] - luminance) * saturationGain) * brightnessGain,
+    (luminance + (rgba[1] - luminance) * saturationGain) * brightnessGain,
+    (luminance + (rgba[2] - luminance) * saturationGain) * brightnessGain,
+    1,
+  ];
 
-  return mixRgba(low, high, clamp01(volume));
+  return `#${toHex(boosted[0])}${toHex(boosted[1])}${toHex(boosted[2])}`;
 }
 
-function mixRgba(
-  left: readonly [number, number, number, number],
-  right: readonly [number, number, number, number],
-  ratio: number,
-): Rgba {
-  const value = clamp01(ratio);
-
-  return [
-    Math.round(left[0] + (right[0] - left[0]) * value),
-    Math.round(left[1] + (right[1] - left[1]) * value),
-    Math.round(left[2] + (right[2] - left[2]) * value),
-    left[3] + (right[3] - left[3]) * value,
-  ];
+function toHex(value: number): string {
+  return Math.round(clamp(value, 0, 255)).toString(16).padStart(2, "0");
 }
 
 function rgbaColor(rgba: readonly [number, number, number, number]): string {
   return `rgba(${Math.round(rgba[0])}, ${Math.round(rgba[1])}, ${Math.round(rgba[2])}, ${clamp01(rgba[3]).toFixed(3)})`;
 }
 
-function dropShadow(color: readonly [number, number, number, number], blurPx: number): string {
-  return `drop-shadow(0 0 ${blurPx}px ${rgbaColor(color)})`;
+function blurFilter(blurPx: number): string {
+  return `blur(${blurPx.toFixed(2)}px)`;
 }
 
-function parseColorSetting(setting: ColorSetting): Rgba {
-  return [...parseColor(setting.color), clamp01(setting.alpha)] as Rgba;
-}
-
-function parseColor(value: string): [number, number, number] {
+function parseColor(value: string, alpha = 1): Rgba {
   const hex = value.trim();
 
   if (/^#[0-9a-f]{6}$/i.test(hex)) {
@@ -401,19 +579,21 @@ function parseColor(value: string): [number, number, number] {
       Number.parseInt(hex.slice(1, 3), 16),
       Number.parseInt(hex.slice(3, 5), 16),
       Number.parseInt(hex.slice(5, 7), 16),
+      clamp01(alpha),
     ];
   }
 
   const matches = hex.match(/\d+/g);
 
   if (!matches || matches.length < 3) {
-    return [66, 214, 181];
+    return [66, 214, 181, clamp01(alpha)];
   }
 
   return [
     Number(matches[0]),
     Number(matches[1]),
     Number(matches[2]),
+    clamp01(alpha),
   ];
 }
 
@@ -421,38 +601,16 @@ function svgElement<K extends keyof SVGElementTagNameMap>(tagName: K): SVGElemen
   return document.createElementNS(SVG_NS, tagName);
 }
 
-function pushedRadii(
-  layerOneValue: number,
-  layerTwoValue: number,
-  layerThreeValue: number,
-): { layerOne: number; layerTwo: number; layerThree: number } {
-  const layerOneExpansion = LAYER_ONE_RADIUS * clamp(layerOneValue, 0, 2) * LAYER_ONE_SCALE_RANGE;
-  const layerTwoExpansion = LAYER_TWO_RADIUS * clamp(layerTwoValue, 0, 2) * LAYER_TWO_SCALE_RANGE;
-  const layerThreeExpansion = LAYER_THREE_RADIUS * clamp(layerThreeValue, 0, 2) * LAYER_THREE_SCALE_RANGE;
-  const layerOne = LAYER_ONE_RADIUS + layerOneExpansion;
-  const layerTwoPush = Math.max(
-    0,
-    outerEdge(layerOne, LAYER_ONE_WIDTH) - innerEdge(LAYER_TWO_RADIUS, LAYER_TWO_WIDTH),
-  );
-  const layerTwo = LAYER_TWO_RADIUS + layerTwoPush + layerTwoExpansion;
-  const layerThreePush = Math.max(
-    0,
-    outerEdge(layerTwo, LAYER_TWO_WIDTH) - innerEdge(LAYER_THREE_RADIUS, LAYER_THREE_WIDTH),
-  );
-  const layerThree = Math.min(
-    LAYER_THREE_MAX_RADIUS,
-    LAYER_THREE_RADIUS + layerThreePush + layerThreeExpansion,
-  );
-
-  return { layerOne, layerTwo, layerThree };
-}
-
-function innerEdge(radius: number, width: number): number {
-  return radius - width / 2;
-}
-
 function outerEdge(radius: number, width: number): number {
   return radius + width / 2;
+}
+
+function ringBodyWidth(width: number): number {
+  return width + RING_BODY_SEAM_OVERLAP;
+}
+
+function glowWidth(width: number, ratio: number): number {
+  return width + lerp(8, 14, ratio);
 }
 
 function setCircleRadius(circle: SVGCircleElement | null, radius: number): void {
@@ -489,13 +647,10 @@ function lerp(start: number, end: number, ratio: number): number {
   return start + (end - start) * clamp01(ratio);
 }
 
-function smoothRgba(previous: Rgba, next: Rgba, factor: number): Rgba {
-  return [
-    smoothNumber(previous[0], next[0], factor),
-    smoothNumber(previous[1], next[1], factor),
-    smoothNumber(previous[2], next[2], factor),
-    smoothNumber(previous[3], next[3], factor),
-  ];
+function smoothStep(value: number): number {
+  const ratio = clamp01(value);
+
+  return ratio * ratio * (3 - 2 * ratio);
 }
 
 function normalizeRingSettings(settings: ThreeLayerRingSettings | undefined): ThreeLayerRingSettings {
@@ -508,10 +663,7 @@ function normalizeRingSettings(settings: ThreeLayerRingSettings | undefined): Th
   return {
     ...defaults,
     ...settings,
-    colors: {
-      ...defaults.colors,
-      ...settings.colors,
-    },
+    ringStyle: normalizeThreeLayerRingStyle(settings.ringStyle),
   };
 }
 
