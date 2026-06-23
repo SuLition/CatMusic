@@ -69,9 +69,11 @@ const IDLE_EDGE_WAVE_HEIGHT = 2.4;
 const IDLE_RADIUS_BREATH_HEIGHT = 1.2;
 const IDLE_OUTER_LINE_GAP = 3.4;
 const TAU = Math.PI * 2;
-const COLOR_FLOW_FILL_PERIOD_SECONDS = 18;
-const COLOR_FLOW_STROKE_PERIOD_SECONDS = 14;
-const COLOR_FLOW_OVERLAY_PERIOD_SECONDS = 22;
+const FLOW_PATTERN_TILE_WIDTH = 256;
+const FLOW_PATTERN_TILE_HEIGHT = 256;
+const FLOW_PATTERN_FILL_PERIOD_SECONDS = 16;
+const FLOW_PATTERN_STROKE_PERIOD_SECONDS = 11;
+const FLOW_PATTERN_OVERLAY_PERIOD_SECONDS = 19;
 
 type Rgba = [number, number, number, number];
 
@@ -109,6 +111,27 @@ type RainbowPaintIds = {
   fill: string;
   stroke: string;
   overlays: string[];
+};
+
+type FlowBand = {
+  x: number;
+  width: number;
+  color: string;
+  opacity: number;
+  angle: number;
+};
+
+type FlowVector = {
+  x: number;
+  y: number;
+};
+
+type RainbowFlowPalette = {
+  fill: GradientStop[];
+  fillBands: string[];
+  stroke: GradientStop[];
+  strokeBands: string[];
+  overlayPalettes: string[][];
 };
 
 type IdleMotion = {
@@ -1036,90 +1059,291 @@ function createRainbowDefs(
   style: SolidSpectrumCircleSettings["rainbowStyle"],
 ): SVGDefsElement {
   const defs = svgElement("defs");
-  const colors = rainbowStyleColors(style);
-  const fillGradient = svgElement("linearGradient");
-  const strokeGradient = svgElement("linearGradient");
-
-  fillGradient.setAttribute("id", ids.fill);
-  fillGradient.setAttribute("gradientUnits", "userSpaceOnUse");
-  fillGradient.setAttribute("x1", "-16");
-  fillGradient.setAttribute("y1", "22");
-  fillGradient.setAttribute("x2", "216");
-  fillGradient.setAttribute("y2", "180");
-  appendGradientStops(fillGradient, colors.fill);
-  appendGradientFlow(fillGradient, COLOR_FLOW_FILL_PERIOD_SECONDS, "forward", 0);
-
-  ids.overlays.forEach((id, index) => {
-    defs.append(createRainbowOverlayGradient(id, colors.overlays[index] ?? colors.overlays[0], index));
-  });
-
-  strokeGradient.setAttribute("id", ids.stroke);
-  strokeGradient.setAttribute("gradientUnits", "userSpaceOnUse");
-  strokeGradient.setAttribute("x1", "-4");
-  strokeGradient.setAttribute("y1", "100");
-  strokeGradient.setAttribute("x2", "204");
-  strokeGradient.setAttribute("y2", "100");
-  appendGradientStops(strokeGradient, colors.stroke);
-  appendGradientFlow(strokeGradient, COLOR_FLOW_STROKE_PERIOD_SECONDS, "reverse", -2.2);
-
-  defs.append(fillGradient, strokeGradient);
+  appendRainbowFlowPaints(defs, ids, rainbowFlowPalette(style));
 
   return defs;
 }
 
-function createRainbowOverlayGradient(
-  id: string,
-  overlay: {
-    cx: number;
-    cy: number;
-    r: number;
-    color: string;
-    midColor: string;
-    opacity: number;
-  },
-  index: number,
-): SVGRadialGradientElement {
-  const gradient = svgElement("radialGradient");
+function appendRainbowFlowPaints(
+  defs: SVGDefsElement,
+  ids: RainbowPaintIds,
+  palette: RainbowFlowPalette,
+): void {
+  defs.append(...createFlowPattern(
+    ids.fill,
+    `${ids.fill}-base`,
+    FLOW_PATTERN_FILL_PERIOD_SECONDS,
+    { x: -FLOW_PATTERN_TILE_WIDTH, y: -52 },
+    0,
+    palette.fill,
+    createFlowBands(palette.fillBands, 86, 0.09, -18),
+  ));
 
-  gradient.setAttribute("id", id);
-  gradient.setAttribute("gradientUnits", "userSpaceOnUse");
-  gradient.setAttribute("cx", `${overlay.cx}`);
-  gradient.setAttribute("cy", `${overlay.cy}`);
-  gradient.setAttribute("r", `${overlay.r}`);
-  appendGradientStops(gradient, [
-    { offset: "0%", color: overlay.color, opacity: overlay.opacity },
-    { offset: "38%", color: overlay.midColor, opacity: overlay.opacity * 0.42 },
-    { offset: "74%", color: overlay.midColor, opacity: overlay.opacity * 0.12 },
-    { offset: "100%", color: overlay.midColor, opacity: 0 },
-  ]);
-  appendGradientFlow(
-    gradient,
-    COLOR_FLOW_OVERLAY_PERIOD_SECONDS + index * 2.5,
-    index % 2 === 0 ? "forward" : "reverse",
-    -index * 1.7,
-  );
+  defs.append(...createFlowPattern(
+    ids.stroke,
+    `${ids.stroke}-base`,
+    FLOW_PATTERN_STROKE_PERIOD_SECONDS,
+    { x: FLOW_PATTERN_TILE_WIDTH, y: -32 },
+    -1.6,
+    palette.stroke,
+    createFlowBands(palette.strokeBands, 64, 0.14, 8),
+  ));
 
-  return gradient;
+  ids.overlays.forEach((id, index) => {
+    defs.append(...createFlowPattern(
+      id,
+      null,
+      FLOW_PATTERN_OVERLAY_PERIOD_SECONDS + index * 2.4,
+      overlayFlowVector(index),
+      -index * 1.25,
+      null,
+      createFlowBands(
+        overlayBandColors(palette, index),
+        72 + index * 6,
+        0.075 + index * 0.018,
+        overlayBandAngle(index),
+      ),
+    ));
+  });
 }
 
-function appendGradientFlow(
-  gradient: SVGGradientElement,
+function rainbowFlowPalette(style: SolidSpectrumCircleSettings["rainbowStyle"]): RainbowFlowPalette {
+  switch (style) {
+    case "aurora":
+      return {
+        fill: [
+          { offset: "0%", color: "#63f4e5", opacity: 0.92 },
+          { offset: "18%", color: "#5ee8bd", opacity: 0.93 },
+          { offset: "36%", color: "#58d8f4", opacity: 0.92 },
+          { offset: "56%", color: "#5c8df0", opacity: 0.9 },
+          { offset: "76%", color: "#765cdd", opacity: 0.88 },
+          { offset: "90%", color: "#a06fdf", opacity: 0.84 },
+          { offset: "100%", color: "#63f4e5", opacity: 0.92 },
+        ],
+        fillBands: ["#d8fff9", "#8ff8dc", "#80eaff", "#8aa8ff", "#b99dff"],
+        stroke: [
+          { offset: "0%", color: "#78f2e9", opacity: 0.9 },
+          { offset: "20%", color: "#6be5b6", opacity: 0.92 },
+          { offset: "42%", color: "#5bd6f5", opacity: 0.91 },
+          { offset: "66%", color: "#5f8df0", opacity: 0.88 },
+          { offset: "86%", color: "#9670df", opacity: 0.84 },
+          { offset: "100%", color: "#78f2e9", opacity: 0.9 },
+        ],
+        strokeBands: ["#eafffb", "#9dffd9", "#83edff", "#8eaaff", "#d1b1ff"],
+        overlayPalettes: [
+          ["#ecfffb", "#adfff3", "#6df0d8", "#8fb2ff"],
+          ["#c8ffe8", "#70f0bf", "#6ee6e2", "#79a0ff"],
+          ["#bbf8ff", "#62dfff", "#2e74f0", "#8c77f0"],
+          ["#cfc2ff", "#a46ee2", "#7051cf", "#77efe9"],
+        ],
+      };
+    case "twilight":
+      return {
+        fill: [
+          { offset: "0%", color: "#4ed7f1", opacity: 0.9 },
+          { offset: "18%", color: "#4c9ff0", opacity: 0.91 },
+          { offset: "38%", color: "#4c62db", opacity: 0.92 },
+          { offset: "58%", color: "#6b4fc8", opacity: 0.9 },
+          { offset: "78%", color: "#9b65d3", opacity: 0.86 },
+          { offset: "92%", color: "#ce7aba", opacity: 0.8 },
+          { offset: "100%", color: "#4ed7f1", opacity: 0.9 },
+        ],
+        fillBands: ["#9feeff", "#6eb8ff", "#6d82ff", "#9b7bfa", "#e59bd4"],
+        stroke: [
+          { offset: "0%", color: "#58d5ee", opacity: 0.88 },
+          { offset: "24%", color: "#4d9bed", opacity: 0.9 },
+          { offset: "48%", color: "#5361d8", opacity: 0.9 },
+          { offset: "72%", color: "#8560d1", opacity: 0.86 },
+          { offset: "90%", color: "#c276bf", opacity: 0.8 },
+          { offset: "100%", color: "#58d5ee", opacity: 0.88 },
+        ],
+        strokeBands: ["#b8f4ff", "#78bdff", "#7f8cff", "#b495ff", "#f3a8da"],
+        overlayPalettes: [
+          ["#c7f8ff", "#73dff1", "#6ba9f4", "#a891ff"],
+          ["#9bbfff", "#5f8ff1", "#535cd8", "#bf8de0"],
+          ["#9186ff", "#5646c7", "#3427a8", "#b18cff"],
+          ["#f0a9d2", "#c072ba", "#9d4ca7", "#73dff1"],
+        ],
+      };
+    case "cool":
+    default:
+      return {
+        fill: [
+          { offset: "0%", color: "#68ecf6", opacity: 0.92 },
+          { offset: "16%", color: "#55c7f6", opacity: 0.94 },
+          { offset: "34%", color: "#4594ee", opacity: 0.92 },
+          { offset: "52%", color: "#4b66df", opacity: 0.9 },
+          { offset: "70%", color: "#6657d2", opacity: 0.88 },
+          { offset: "86%", color: "#9269da", opacity: 0.86 },
+          { offset: "100%", color: "#68ecf6", opacity: 0.92 },
+        ],
+        fillBands: ["#b8fbff", "#7fe3ff", "#6f8cff", "#b38cff"],
+        stroke: [
+          { offset: "0%", color: "#7ef3fb", opacity: 0.9 },
+          { offset: "22%", color: "#5bd1f7", opacity: 0.92 },
+          { offset: "44%", color: "#4b9cf0", opacity: 0.9 },
+          { offset: "66%", color: "#5d70e5", opacity: 0.88 },
+          { offset: "84%", color: "#795fda", opacity: 0.86 },
+          { offset: "100%", color: "#7ef3fb", opacity: 0.9 },
+        ],
+        strokeBands: ["#d4fdff", "#78dcff", "#8193ff", "#d0a0ff"],
+        overlayPalettes: [
+          ["#e8ffff", "#8df7ff", "#7eb9ff", "#bda1ff"],
+          ["#7de8ff", "#4ec1ff", "#5277f0", "#9d72ec"],
+          ["#c7fbff", "#6fdaff", "#3d83f5", "#7662e0"],
+          ["#9d8fff", "#765de1", "#9b70e5", "#70eef2"],
+        ],
+      };
+  }
+}
+
+function createFlowPattern(
+  patternId: string,
+  gradientId: string | null,
   durationSeconds: number,
-  direction: "forward" | "reverse",
+  vector: FlowVector,
+  beginSeconds: number,
+  baseStops: GradientStop[] | null,
+  bands: FlowBand[],
+): SVGElement[] {
+  const elements: SVGElement[] = [];
+  const pattern = svgElement("pattern");
+
+  pattern.setAttribute("id", patternId);
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("x", `${VIEWBOX_MIN}`);
+  pattern.setAttribute("y", `${VIEWBOX_MIN}`);
+  pattern.setAttribute("width", `${FLOW_PATTERN_TILE_WIDTH}`);
+  pattern.setAttribute("height", `${FLOW_PATTERN_TILE_HEIGHT}`);
+
+  if (gradientId && baseStops) {
+    const gradient = svgElement("linearGradient");
+    const base = svgElement("rect");
+
+    gradient.setAttribute("id", gradientId);
+    gradient.setAttribute("gradientUnits", "userSpaceOnUse");
+    gradient.setAttribute("x1", "0");
+    gradient.setAttribute("y1", "0");
+    gradient.setAttribute("x2", `${FLOW_PATTERN_TILE_WIDTH}`);
+    gradient.setAttribute("y2", "0");
+    appendGradientStops(gradient, baseStops);
+    elements.push(gradient);
+
+    base.setAttribute("x", "0");
+    base.setAttribute("y", "0");
+    base.setAttribute("width", `${FLOW_PATTERN_TILE_WIDTH}`);
+    base.setAttribute("height", `${FLOW_PATTERN_TILE_HEIGHT}`);
+    base.setAttribute("fill", paintUrl(gradientId));
+    pattern.append(base);
+  }
+
+  appendPatternBands(pattern, bands, patternId, elements);
+  appendPatternTranslate(pattern, durationSeconds, vector, beginSeconds);
+  elements.push(pattern);
+
+  return elements;
+}
+
+function appendPatternBands(
+  pattern: SVGPatternElement,
+  bands: FlowBand[],
+  patternId: string,
+  defs: SVGElement[],
+): void {
+  for (let index = 0; index < bands.length; index += 1) {
+    const band = bands[index];
+    const rect = svgElement("rect");
+    const gradientId = `${patternId}-soft-band-${index}`;
+    const gradient = svgElement("linearGradient");
+
+    gradient.setAttribute("id", gradientId);
+    gradient.setAttribute("x1", "0");
+    gradient.setAttribute("y1", "0");
+    gradient.setAttribute("x2", "1");
+    gradient.setAttribute("y2", "0");
+    appendSoftBandStops(gradient, band.color, band.opacity);
+    defs.push(gradient);
+
+    rect.setAttribute("x", `${band.x}`);
+    rect.setAttribute("y", `${-FLOW_PATTERN_TILE_HEIGHT}`);
+    rect.setAttribute("width", `${band.width}`);
+    rect.setAttribute("height", `${FLOW_PATTERN_TILE_HEIGHT * 3}`);
+    rect.setAttribute("fill", paintUrl(gradientId));
+    rect.setAttribute("transform", `rotate(${band.angle} ${FLOW_PATTERN_TILE_WIDTH / 2} ${FLOW_PATTERN_TILE_HEIGHT / 2})`);
+    pattern.append(rect);
+  }
+}
+
+function appendSoftBandStops(
+  gradient: SVGGradientElement,
+  color: string,
+  opacity: number,
+): void {
+  appendGradientStops(gradient, [
+    { offset: "0%", color, opacity: 0 },
+    { offset: "26%", color, opacity: opacity * 0.42 },
+    { offset: "50%", color, opacity },
+    { offset: "74%", color, opacity: opacity * 0.42 },
+    { offset: "100%", color, opacity: 0 },
+  ]);
+}
+
+function appendPatternTranslate(
+  pattern: SVGPatternElement,
+  durationSeconds: number,
+  vector: FlowVector,
   beginSeconds: number,
 ): void {
   const animation = svgElement("animateTransform");
-  const fromAngle = direction === "forward" ? 0 : 360;
-  const toAngle = direction === "forward" ? 360 : 0;
 
-  animation.setAttribute("attributeName", "gradientTransform");
-  animation.setAttribute("type", "rotate");
-  animation.setAttribute("from", `${fromAngle} ${CENTER} ${CENTER}`);
-  animation.setAttribute("to", `${toAngle} ${CENTER} ${CENTER}`);
+  animation.setAttribute("attributeName", "patternTransform");
+  animation.setAttribute("type", "translate");
+  animation.setAttribute("from", "0 0");
+  animation.setAttribute("to", `${format(vector.x)} ${format(vector.y)}`);
   animation.setAttribute("dur", `${durationSeconds.toFixed(3)}s`);
   animation.setAttribute("begin", `${beginSeconds.toFixed(3)}s`);
   animation.setAttribute("repeatCount", "indefinite");
-  gradient.append(animation);
+  pattern.append(animation);
+}
+
+function overlayFlowVector(index: number): FlowVector {
+  const vectors: FlowVector[] = [
+    { x: -FLOW_PATTERN_TILE_WIDTH, y: 72 },
+    { x: FLOW_PATTERN_TILE_WIDTH, y: 46 },
+    { x: -FLOW_PATTERN_TILE_WIDTH, y: 74 },
+    { x: FLOW_PATTERN_TILE_WIDTH, y: -68 },
+  ];
+
+  return vectors[index % vectors.length] ?? vectors[0];
+}
+
+function overlayBandAngle(index: number): number {
+  const angles = [-18, 14, -26, 24];
+
+  return angles[index % angles.length] ?? angles[0];
+}
+
+function createFlowBands(
+  colors: string[],
+  width: number,
+  opacity: number,
+  angle: number,
+): FlowBand[] {
+  const spacing = FLOW_PATTERN_TILE_WIDTH / 4;
+
+  return Array.from({ length: 7 }, (_, index) => ({
+    x: -spacing + index * spacing,
+    width,
+    color: colors[index % colors.length] ?? colors[0] ?? "#ffffff",
+    opacity,
+    angle,
+  }));
+}
+
+function overlayBandColors(palette: RainbowFlowPalette, index: number): string[] {
+  return palette.overlayPalettes[index % palette.overlayPalettes.length]
+    ?? palette.overlayPalettes[0]
+    ?? palette.fillBands;
 }
 
 function appendGradientStops(
