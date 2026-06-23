@@ -7,6 +7,7 @@ import type {
 import {
   createDefaultAnimationCommonSettings,
   createDefaultSolidSpectrumCircleSettings,
+  normalizeRainbowBallStyle,
 } from "../settings/settings-store";
 import type { VisualizerAnimation } from "./animation-registry";
 
@@ -51,7 +52,6 @@ const WAVE_VELOCITY_LIMIT = 0.55;
 const WAVE_VALUE_MAX = 2;
 const GLOW_ATTACK_SMOOTHING = 0.28;
 const GLOW_RELEASE_SMOOTHING = 0.09;
-const SIRI_RAINBOW_ALPHA = 0.92;
 const SURFACE_OUTLINE_COLOR = "rgba(244, 253, 255, 0.92)";
 const OUTER_LINE_MIN_GAP = 2.5;
 const OUTER_LINE_DYNAMIC_GAP = 8.5;
@@ -89,22 +89,6 @@ type GradientStop = {
   offset: string;
   color: string;
   opacity: number;
-};
-
-type RainbowOverlayPaint = {
-  cx: number;
-  cy: number;
-  r: number;
-  color: string;
-  midColor: string;
-  opacity: number;
-};
-
-type RainbowStyleColors = {
-  fill: GradientStop[];
-  stroke: GradientStop[];
-  overlays: RainbowOverlayPaint[];
-  glow: Rgba[];
 };
 
 type RainbowPaintIds = {
@@ -334,7 +318,6 @@ class SolidSpectrumCircleAnimation implements VisualizerAnimation {
     const strokePaint = paintUrl(this.rainbowPaintIds.stroke);
     const glowColor = siriRainbowGlowColor(this.circleSettings.rainbowStyle, volume, displayGlow);
     const idleBrightness = idleMotion.weight * smoothStep(idleMotion.breath);
-    const silhouetteOpacity = lerp(1, lerp(0.95, 1, idleBrightness), idleMotion.weight);
     const overlayOpacity = lerp(1, lerp(0.92, 1, idleBrightness), idleMotion.weight);
 
     this.glowPath.setAttribute("d", paths.outline);
@@ -347,7 +330,7 @@ class SolidSpectrumCircleAnimation implements VisualizerAnimation {
 
     this.silhouettePath.setAttribute("d", paths.outline);
     this.silhouettePath.style.fill = wavePaint;
-    this.silhouettePath.style.opacity = silhouetteOpacity.toFixed(3);
+    this.silhouettePath.style.opacity = "1";
     this.silhouettePath.style.filter = idleMotion.weight > 0.01
       ? dropShadow(glowColor, lerp(1, 4, idleBrightness))
       : "";
@@ -903,7 +886,7 @@ function siriRainbowGlowColor(
   volume: number,
   glow: number,
 ): Rgba {
-  const palette = rainbowStyleColors(style).glow;
+  const palette = rainbowGlowPalette(style);
   const value = clamp01(volume * 0.72 + glow * 0.28) * (palette.length - 1);
   const index = Math.floor(value);
   const nextIndex = Math.min(index + 1, palette.length - 1);
@@ -953,104 +936,52 @@ function createRainbowPaintIds(): RainbowPaintIds {
   };
 }
 
-function rainbowStyleColors(style: SolidSpectrumCircleSettings["rainbowStyle"]): RainbowStyleColors {
-  switch (style) {
-    case "aurora":
-      return {
-        fill: [
-          { offset: "0%", color: "#63f4e5", opacity: 0.9 },
-          { offset: "22%", color: "#5ee8bd", opacity: SIRI_RAINBOW_ALPHA },
-          { offset: "44%", color: "#58d8f4", opacity: 0.91 },
-          { offset: "66%", color: "#5c8df0", opacity: 0.9 },
-          { offset: "84%", color: "#765cdd", opacity: 0.88 },
-          { offset: "100%", color: "#a06fdf", opacity: 0.84 },
-        ],
-        stroke: [
-          { offset: "0%", color: "#78f2e9", opacity: 0.84 },
-          { offset: "22%", color: "#6be5b6", opacity: 0.86 },
-          { offset: "44%", color: "#5bd6f5", opacity: 0.86 },
-          { offset: "68%", color: "#5f8df0", opacity: 0.84 },
-          { offset: "100%", color: "#9670df", opacity: 0.8 },
-        ],
-        overlays: [
-          { cx: 74, cy: 62, r: 132, color: "#adfff3", midColor: "#66ead1", opacity: 0.34 },
-          { cx: 178, cy: 78, r: 136, color: "#70f0bf", midColor: "#5de1d3", opacity: 0.3 },
-          { cx: 158, cy: 178, r: 134, color: "#2e74f0", midColor: "#44bdf2", opacity: 0.32 },
-          { cx: 46, cy: 176, r: 126, color: "#7051cf", midColor: "#a46ee2", opacity: 0.24 },
-        ],
-        glow: [
-          [99, 244, 229, 0.82],
-          [94, 232, 189, 0.84],
-          [88, 216, 244, 0.84],
-          [92, 141, 240, 0.84],
-          [118, 92, 221, 0.82],
-        ],
-      };
-    case "twilight":
-      return {
-        fill: [
-          { offset: "0%", color: "#4ed7f1", opacity: 0.88 },
-          { offset: "20%", color: "#4c9ff0", opacity: 0.9 },
-          { offset: "42%", color: "#4c62db", opacity: SIRI_RAINBOW_ALPHA },
-          { offset: "64%", color: "#6b4fc8", opacity: 0.9 },
-          { offset: "82%", color: "#9b65d3", opacity: 0.86 },
-          { offset: "100%", color: "#ce7aba", opacity: 0.78 },
-        ],
-        stroke: [
-          { offset: "0%", color: "#58d5ee", opacity: 0.82 },
-          { offset: "24%", color: "#4d9bed", opacity: 0.84 },
-          { offset: "50%", color: "#5361d8", opacity: 0.84 },
-          { offset: "76%", color: "#8560d1", opacity: 0.82 },
-          { offset: "100%", color: "#c276bf", opacity: 0.76 },
-        ],
-        overlays: [
-          { cx: 82, cy: 72, r: 128, color: "#73dff1", midColor: "#5caeed", opacity: 0.26 },
-          { cx: 176, cy: 70, r: 132, color: "#535cd8", midColor: "#4e8fe9", opacity: 0.3 },
-          { cx: 158, cy: 180, r: 138, color: "#3427a8", midColor: "#5646c7", opacity: 0.34 },
-          { cx: 46, cy: 180, r: 130, color: "#9d4ca7", midColor: "#c072ba", opacity: 0.28 },
-        ],
-        glow: [
-          [78, 215, 241, 0.78],
-          [76, 159, 240, 0.82],
-          [76, 98, 219, 0.84],
-          [107, 79, 200, 0.82],
-          [206, 122, 186, 0.74],
-        ],
-      };
-    case "cool":
+function rainbowGlowPalette(style: SolidSpectrumCircleSettings["rainbowStyle"]): Rgba[] {
+  switch (normalizeRainbowBallStyle(style)) {
+    case "biolume-lagoon":
+      return [
+        [185, 255, 242, 0.84],
+        [102, 240, 207, 0.86],
+        [59, 216, 255, 0.84],
+        [199, 255, 122, 0.76],
+      ];
+    case "plum-nebula":
+      return [
+        [190, 235, 255, 0.8],
+        [167, 168, 255, 0.84],
+        [201, 154, 242, 0.84],
+        [240, 161, 203, 0.78],
+      ];
+    case "solar-jelly":
+      return [
+        [223, 255, 255, 0.8],
+        [166, 239, 255, 0.84],
+        [255, 184, 227, 0.82],
+        [255, 213, 155, 0.78],
+      ];
+    case "jade-smoke":
+      return [
+        [239, 255, 248, 0.76],
+        [158, 242, 214, 0.82],
+        [188, 230, 200, 0.8],
+        [241, 223, 169, 0.74],
+      ];
+    case "violet-alloy":
+      return [
+        [201, 247, 255, 0.78],
+        [133, 223, 255, 0.84],
+        [166, 160, 255, 0.86],
+        [226, 179, 255, 0.78],
+      ];
+    case "opal-current":
     default:
-      return {
-        fill: [
-          { offset: "0%", color: "#68ecf6", opacity: 0.9 },
-          { offset: "20%", color: "#55c7f6", opacity: SIRI_RAINBOW_ALPHA },
-          { offset: "42%", color: "#4594ee", opacity: 0.91 },
-          { offset: "64%", color: "#4b66df", opacity: 0.9 },
-          { offset: "82%", color: "#6657d2", opacity: 0.88 },
-          { offset: "100%", color: "#9269da", opacity: 0.86 },
-        ],
-        stroke: [
-          { offset: "0%", color: "#70edf7", opacity: 0.82 },
-          { offset: "18%", color: "#59c8f7", opacity: 0.84 },
-          { offset: "38%", color: "#4898ef", opacity: 0.84 },
-          { offset: "58%", color: "#4d6ee4", opacity: 0.82 },
-          { offset: "78%", color: "#655bd4", opacity: 0.8 },
-          { offset: "100%", color: "#9872df", opacity: 0.76 },
-        ],
-        overlays: [
-          { cx: 86, cy: 68, r: 128, color: "#9bf8ff", midColor: "#6fdff7", opacity: 0.34 },
-          { cx: 178, cy: 70, r: 132, color: "#69d6ff", midColor: "#4cbcf5", opacity: 0.32 },
-          { cx: 160, cy: 180, r: 136, color: "#1554df", midColor: "#2f82f3", opacity: 0.34 },
-          { cx: 46, cy: 180, r: 128, color: "#6d4ac7", midColor: "#9a69dc", opacity: 0.28 },
-        ],
-        glow: [
-          [104, 236, 246, 0.82],
-          [84, 198, 246, 0.84],
-          [68, 148, 238, 0.86],
-          [76, 102, 224, 0.86],
-          [105, 88, 210, 0.84],
-          [146, 105, 218, 0.82],
-        ],
-      };
+      return [
+        [223, 248, 246, 0.78],
+        [139, 230, 232, 0.84],
+        [114, 185, 234, 0.86],
+        [138, 139, 232, 0.84],
+        [199, 184, 255, 0.76],
+      ];
   }
 }
 
@@ -1108,93 +1039,132 @@ function appendRainbowFlowPaints(
 }
 
 function rainbowFlowPalette(style: SolidSpectrumCircleSettings["rainbowStyle"]): RainbowFlowPalette {
-  switch (style) {
-    case "aurora":
-      return {
-        fill: [
-          { offset: "0%", color: "#63f4e5", opacity: 0.92 },
-          { offset: "18%", color: "#5ee8bd", opacity: 0.93 },
-          { offset: "36%", color: "#58d8f4", opacity: 0.92 },
-          { offset: "56%", color: "#5c8df0", opacity: 0.9 },
-          { offset: "76%", color: "#765cdd", opacity: 0.88 },
-          { offset: "90%", color: "#a06fdf", opacity: 0.84 },
-          { offset: "100%", color: "#63f4e5", opacity: 0.92 },
+  switch (normalizeRainbowBallStyle(style)) {
+    case "biolume-lagoon":
+      return createRainbowFlowPalette(
+        ["#12384A", "#167B83", "#35C7B6", "#7AE9D5", "#C7FF7A"],
+        ["#B9FFF2", "#66F0CF", "#3BD8FF", "#C7FF7A"],
+        ["#AFFFF4", "#61E7D7", "#7DDAFF", "#C7FF7A"],
+        ["#E7FFF9", "#8AFFF0", "#61E7D7", "#86E9FF"],
+        [
+          ["#E8FFF9", "#B9FFF2", "#66F0CF", "#35C7B6"],
+          ["#D6FFE0", "#C7FF7A", "#66F0CF", "#3BD8FF"],
+          ["#B5F9FF", "#3BD8FF", "#167B83", "#7AE9D5"],
+          ["#ECFFF8", "#7AE9D5", "#AFFFF4", "#C7FF7A"],
         ],
-        fillBands: ["#d8fff9", "#8ff8dc", "#80eaff", "#8aa8ff", "#b99dff"],
-        stroke: [
-          { offset: "0%", color: "#78f2e9", opacity: 0.9 },
-          { offset: "20%", color: "#6be5b6", opacity: 0.92 },
-          { offset: "42%", color: "#5bd6f5", opacity: 0.91 },
-          { offset: "66%", color: "#5f8df0", opacity: 0.88 },
-          { offset: "86%", color: "#9670df", opacity: 0.84 },
-          { offset: "100%", color: "#78f2e9", opacity: 0.9 },
+      );
+    case "plum-nebula":
+      return createRainbowFlowPalette(
+        ["#456DE0", "#6B62D6", "#8E5FC8", "#B564A2", "#F0A1CB"],
+        ["#BEEBFF", "#A7A8FF", "#C99AF2", "#F0A1CB"],
+        ["#B8F2FF", "#B4AEFF", "#E7B0D8", "#F0A1CB"],
+        ["#DBF8FF", "#B4AEFF", "#D8A1F0", "#F4B4D4"],
+        [
+          ["#DDF7FF", "#BEEBFF", "#A7A8FF", "#6B62D6"],
+          ["#DDD8FF", "#A7A8FF", "#8E5FC8", "#F0A1CB"],
+          ["#F9C8E2", "#F0A1CB", "#B564A2", "#C99AF2"],
+          ["#CFEAFF", "#456DE0", "#B4AEFF", "#E7B0D8"],
         ],
-        strokeBands: ["#eafffb", "#9dffd9", "#83edff", "#8eaaff", "#d1b1ff"],
-        overlayPalettes: [
-          ["#ecfffb", "#adfff3", "#6df0d8", "#8fb2ff"],
-          ["#c8ffe8", "#70f0bf", "#6ee6e2", "#79a0ff"],
-          ["#bbf8ff", "#62dfff", "#2e74f0", "#8c77f0"],
-          ["#cfc2ff", "#a46ee2", "#7051cf", "#77efe9"],
+      );
+    case "solar-jelly":
+      return createRainbowFlowPalette(
+        ["#68D9EC", "#7DA4EA", "#D58CC8", "#F3B679", "#FFD59B"],
+        ["#DFFFFF", "#A6EFFF", "#FFB8E3", "#FFD59B"],
+        ["#DFFFFF", "#9DE8FF", "#FFB8E3", "#FFD59B"],
+        ["#F1FFFF", "#B8F4FF", "#FFC4EA", "#FFE0B1"],
+        [
+          ["#F1FFFF", "#DFFFFF", "#A6EFFF", "#7DA4EA"],
+          ["#FFE4F4", "#FFB8E3", "#D58CC8", "#A6EFFF"],
+          ["#FFE7C4", "#FFD59B", "#F3B679", "#FFB8E3"],
+          ["#D7F9FF", "#68D9EC", "#7DA4EA", "#FFD59B"],
         ],
-      };
-    case "twilight":
-      return {
-        fill: [
-          { offset: "0%", color: "#4ed7f1", opacity: 0.9 },
-          { offset: "18%", color: "#4c9ff0", opacity: 0.91 },
-          { offset: "38%", color: "#4c62db", opacity: 0.92 },
-          { offset: "58%", color: "#6b4fc8", opacity: 0.9 },
-          { offset: "78%", color: "#9b65d3", opacity: 0.86 },
-          { offset: "92%", color: "#ce7aba", opacity: 0.8 },
-          { offset: "100%", color: "#4ed7f1", opacity: 0.9 },
+      );
+    case "jade-smoke":
+      return createRainbowFlowPalette(
+        ["#2F827A", "#5BAA9A", "#A8CDBE", "#D8D1B0", "#F1DFA9"],
+        ["#EFFFF8", "#9EF2D6", "#BCE6C8", "#F1DFA9"],
+        ["#EFFFF8", "#9EF2D6", "#BCE6C8", "#F1DFA9"],
+        ["#F7FFFB", "#B7F8E2", "#D0EBD0", "#F6E7B6"],
+        [
+          ["#F7FFFB", "#EFFFF8", "#9EF2D6", "#5BAA9A"],
+          ["#D8FFF0", "#9EF2D6", "#BCE6C8", "#2F827A"],
+          ["#FFF1C8", "#F1DFA9", "#D8D1B0", "#A8CDBE"],
+          ["#EDFDF5", "#BCE6C8", "#5BAA9A", "#F1DFA9"],
         ],
-        fillBands: ["#9feeff", "#6eb8ff", "#6d82ff", "#9b7bfa", "#e59bd4"],
-        stroke: [
-          { offset: "0%", color: "#58d5ee", opacity: 0.88 },
-          { offset: "24%", color: "#4d9bed", opacity: 0.9 },
-          { offset: "48%", color: "#5361d8", opacity: 0.9 },
-          { offset: "72%", color: "#8560d1", opacity: 0.86 },
-          { offset: "90%", color: "#c276bf", opacity: 0.8 },
-          { offset: "100%", color: "#58d5ee", opacity: 0.88 },
+      );
+    case "violet-alloy":
+      return createRainbowFlowPalette(
+        ["#3F6EE8", "#5B67D9", "#7A5FD0", "#A26FDB", "#E2B3FF"],
+        ["#C9F7FF", "#85DFFF", "#A6A0FF", "#E2B3FF"],
+        ["#C9F7FF", "#85DFFF", "#A6A0FF", "#E2B3FF"],
+        ["#E7FBFF", "#9AE6FF", "#B8B3FF", "#ECBFFF"],
+        [
+          ["#E7FBFF", "#C9F7FF", "#85DFFF", "#5B67D9"],
+          ["#D8D5FF", "#A6A0FF", "#7A5FD0", "#85DFFF"],
+          ["#F1CFFF", "#E2B3FF", "#A26FDB", "#A6A0FF"],
+          ["#B8EFFF", "#3F6EE8", "#85DFFF", "#E2B3FF"],
         ],
-        strokeBands: ["#b8f4ff", "#78bdff", "#7f8cff", "#b495ff", "#f3a8da"],
-        overlayPalettes: [
-          ["#c7f8ff", "#73dff1", "#6ba9f4", "#a891ff"],
-          ["#9bbfff", "#5f8ff1", "#535cd8", "#bf8de0"],
-          ["#9186ff", "#5646c7", "#3427a8", "#b18cff"],
-          ["#f0a9d2", "#c072ba", "#9d4ca7", "#73dff1"],
-        ],
-      };
-    case "cool":
+      );
+    case "opal-current":
     default:
-      return {
-        fill: [
-          { offset: "0%", color: "#68ecf6", opacity: 0.92 },
-          { offset: "16%", color: "#55c7f6", opacity: 0.94 },
-          { offset: "34%", color: "#4594ee", opacity: 0.92 },
-          { offset: "52%", color: "#4b66df", opacity: 0.9 },
-          { offset: "70%", color: "#6657d2", opacity: 0.88 },
-          { offset: "86%", color: "#9269da", opacity: 0.86 },
-          { offset: "100%", color: "#68ecf6", opacity: 0.92 },
+      return createRainbowFlowPalette(
+        ["#DFF8F6", "#8BE6E8", "#72B9EA", "#8A8BE8", "#C7B8FF"],
+        ["#FFFFFF", "#B7FFF4", "#93E9FF", "#C7B8FF"],
+        ["#D9FFFF", "#93F2FF", "#B7C4FF", "#C7B8FF"],
+        ["#FFFFFF", "#C9FFF7", "#A6F0FF", "#D8CFFF"],
+        [
+          ["#FFFFFF", "#DFF8F6", "#B7FFF4", "#8BE6E8"],
+          ["#D9FFFF", "#93E9FF", "#72B9EA", "#C7B8FF"],
+          ["#E4DBFF", "#C7B8FF", "#8A8BE8", "#93E9FF"],
+          ["#F8FFFF", "#B7FFF4", "#D9FFFF", "#C7B8FF"],
         ],
-        fillBands: ["#b8fbff", "#7fe3ff", "#6f8cff", "#b38cff"],
-        stroke: [
-          { offset: "0%", color: "#7ef3fb", opacity: 0.9 },
-          { offset: "22%", color: "#5bd1f7", opacity: 0.92 },
-          { offset: "44%", color: "#4b9cf0", opacity: 0.9 },
-          { offset: "66%", color: "#5d70e5", opacity: 0.88 },
-          { offset: "84%", color: "#795fda", opacity: 0.86 },
-          { offset: "100%", color: "#7ef3fb", opacity: 0.9 },
-        ],
-        strokeBands: ["#d4fdff", "#78dcff", "#8193ff", "#d0a0ff"],
-        overlayPalettes: [
-          ["#e8ffff", "#8df7ff", "#7eb9ff", "#bda1ff"],
-          ["#7de8ff", "#4ec1ff", "#5277f0", "#9d72ec"],
-          ["#c7fbff", "#6fdaff", "#3d83f5", "#7662e0"],
-          ["#9d8fff", "#765de1", "#9b70e5", "#70eef2"],
-        ],
-      };
+      );
   }
+}
+
+function createRainbowFlowPalette(
+  fillColors: string[],
+  fillBands: string[],
+  strokeColors: string[],
+  strokeBands: string[],
+  overlayPalettes: string[][],
+): RainbowFlowPalette {
+  return {
+    fill: seamlessGradientStops(fillColors, 1, 1),
+    fillBands,
+    stroke: seamlessGradientStops(strokeColors, 0.9, 0.8),
+    strokeBands,
+    overlayPalettes,
+  };
+}
+
+function seamlessGradientStops(colors: string[], startOpacity: number, endOpacity: number): GradientStop[] {
+  const fallback = colors[0] ?? "#ffffff";
+
+  if (colors.length <= 1) {
+    return [
+      { offset: "0%", color: fallback, opacity: startOpacity },
+      { offset: "100%", color: fallback, opacity: startOpacity },
+    ];
+  }
+
+  const terminalOffset = 88;
+  const stops = colors.map((color, index) => {
+    const ratio = index / (colors.length - 1);
+
+    return {
+      offset: `${formatStopOffset(ratio * terminalOffset)}%`,
+      color,
+      opacity: lerp(startOpacity, endOpacity, ratio),
+    };
+  });
+
+  stops.push({ offset: "100%", color: fallback, opacity: startOpacity });
+  return stops;
+}
+
+function formatStopOffset(value: number): string {
+  return value.toFixed(1).replace(/\.0$/, "");
 }
 
 function createFlowPattern(
@@ -1416,6 +1386,7 @@ function normalizeCircleSettings(settings: SolidSpectrumCircleSettings | undefin
   return {
     ...defaults,
     ...settings,
+    rainbowStyle: normalizeRainbowBallStyle(settings.rainbowStyle),
   };
 }
 

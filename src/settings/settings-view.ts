@@ -123,7 +123,7 @@ export function createSettingsView(
       <div class="settings-section">
         <h2>&#36890;&#29992;&#21442;&#25968;</h2>
         ${rangeRow("setting-response-strength", "&#21709;&#24212;&#24378;&#24230;", 0.2, 2.5, 0.05, commonSettings.responseStrength, formatScale)}
-        ${rangeRow("setting-base-brightness", "&#22522;&#30784;&#20142;&#24230;", 0.1, 1, 0.01, commonSettings.baseBrightness, formatPercent)}
+        ${rangeRow("setting-animation-opacity", "&#25972;&#20307;&#36879;&#26126;&#24230;", 0.1, 1, 0.01, commonSettings.opacity, formatPercent)}
       </div>
 
       <div class="settings-section">
@@ -148,9 +148,9 @@ export function createSettingsView(
       ...common,
       responseStrength: value,
     }));
-    bindCommonRange("setting-base-brightness", (common, value) => ({
+    bindCommonRange("setting-animation-opacity", (common, value) => ({
       ...common,
-      baseBrightness: value,
+      opacity: value,
     }));
 
     if (currentSettings.animationType === "rainbow-ball") {
@@ -175,9 +175,12 @@ export function createSettingsView(
       <div class="setting-row">
         <span class="setting-row-title">&#39044;&#35774;&#39118;&#26684;</span>
         <select id="setting-circle-rainbow-style" class="setting-control">
-          <option value="cool">&#20919;&#33394;</option>
-          <option value="aurora">&#26497;&#20809;</option>
-          <option value="twilight">&#26286;&#33394;</option>
+          <option value="opal-current">Opal Current</option>
+          <option value="biolume-lagoon">Biolume Lagoon</option>
+          <option value="plum-nebula">Plum Nebula</option>
+          <option value="solar-jelly">Solar Jelly</option>
+          <option value="jade-smoke">Jade Smoke</option>
+          <option value="violet-alloy">Violet Alloy</option>
         </select>
       </div>
       ${rangeRow("setting-circle-rhythm-pulse", "&#33410;&#22863;&#33033;&#20914;", 0, 2, 0.05, settings.rhythmPulse, formatScale)}

@@ -23,6 +23,7 @@ export async function createVisualizerPage(root: HTMLElement): Promise<void> {
   const contextMenuController = createVisualizerContextMenu(surface, contextMenu);
 
   let settings = await getAppSettings();
+  applyAnimationOpacity(host, settings);
   let animation = mountAnimation(host, settings);
   let animationType = settings.animationType;
 
@@ -48,6 +49,8 @@ export async function createVisualizerPage(root: HTMLElement): Promise<void> {
 
   await listenToSettingsChanged((nextSettings) => {
     settings = nextSettings;
+    applyAnimationOpacity(host, settings);
+
     if (settings.animationType !== animationType) {
       animation.destroy();
       animation = mountAnimation(host, settings);
@@ -144,6 +147,10 @@ function mountAnimation(host: HTMLElement, settings: AppSettings): VisualizerAni
   return animation;
 }
 
+function applyAnimationOpacity(host: HTMLElement, settings: AppSettings): void {
+  host.style.opacity = `${clamp(settings.animationSettings.common.opacity, 0, 1)}`;
+}
+
 function silentFrame(): AudioFeatureFrame {
   return {
     schemaVersion: 3,
@@ -164,4 +171,12 @@ function requireElement(root: HTMLElement, selector: string): HTMLElement {
   }
 
   return element;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return max;
+  }
+
+  return Math.max(min, Math.min(max, value));
 }

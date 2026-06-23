@@ -71,10 +71,10 @@ const LAYER_THREE_SCALE_RANGE = 0.20;
 const SPECTRUM_GLOW_MAX_BLUR = 11;
 const LAYER_THREE_MAX_RADIUS = VIEWBOX_OUTER_EDGE - LAYER_THREE_WIDTH / 2 - SPECTRUM_GLOW_MAX_BLUR;
 
-// 静止状态下三层环的亮度权重；保持一致可以避免静止时看起来像不同颜色。
-const IDLE_OPACITY_LAYER_ONE = 1.0;
-const IDLE_OPACITY_LAYER_TWO = 0.8;
-const IDLE_OPACITY_LAYER_THREE = 0.6;
+// 三层圆环本体透明度：内层保持 100%，越向外越透明。
+const RING_BODY_OPACITY_LAYER_ONE = 1.0;
+const RING_BODY_OPACITY_LAYER_TWO = 0.78;
+const RING_BODY_OPACITY_LAYER_THREE = 0.56;
 
 // 颜色平滑速度。数值越大，颜色变化越快；数值越小，越不容易看到跳色。
 const COLOR_SMOOTHING = 0.12;
@@ -207,7 +207,6 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
   private renderBlendedLayers(frame: AudioFeatureFrame, activity: number): void {
     const responseStrength = clamp(this.commonSettings.responseStrength, 0.2, 2.5);
     const spectrumSensitivity = clamp(this.ringSettings.spectrumSensitivity, 0.2, 2.5);
-    const baseBrightness = clamp01(this.commonSettings.baseBrightness);
     const volume = clamp(frame.volume * responseStrength, 0, 2);
     const splitIndex = Math.max(1, Math.floor(frame.spectrum.length / 2));
     const layerTwoEnergy = clamp(
@@ -234,9 +233,9 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
     const color = this.smoothColor(mixRgba(idleColor, dynamicColor, normalizedActivity), COLOR_SMOOTHING);
     const rhythmColor = mixRgba(color, parseColorSetting(this.ringSettings.colors.rhythm), clamp01(this.beatImpulse));
     this.applyBreathTransform(this.idleBreathWeight);
-    this.renderRhythmRing(displayedRadii.layerOne, volume, color, rhythmColor, normalizedActivity, baseBrightness);
-    this.renderSpectrumRing(this.layerTwoRing, this.layerTwoValue, color, displayedRadii.layerTwo, normalizedActivity, baseBrightness * IDLE_OPACITY_LAYER_TWO);
-    this.renderSpectrumRing(this.layerThreeRing, this.layerThreeValue, color, displayedRadii.layerThree, normalizedActivity, baseBrightness * IDLE_OPACITY_LAYER_THREE);
+    this.renderRhythmRing(displayedRadii.layerOne, volume, color, rhythmColor, normalizedActivity);
+    this.renderSpectrumRing(this.layerTwoRing, this.layerTwoValue, color, displayedRadii.layerTwo, normalizedActivity, RING_BODY_OPACITY_LAYER_TWO);
+    this.renderSpectrumRing(this.layerThreeRing, this.layerThreeValue, color, displayedRadii.layerThree, normalizedActivity, RING_BODY_OPACITY_LAYER_THREE);
   }
 
   private renderRhythmRing(
@@ -245,16 +244,14 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
     color: Rgba,
     rhythmColor: Rgba,
     activity: number,
-    baseBrightness: number,
   ): void {
-    const ringOpacity = baseBrightness * 0.58 + clamp01(volume) * 0.38 + clamp01(this.beatImpulse) * 0.18;
     const pulseOpacity = clamp01(this.beatImpulse) * (0.22 + clamp01(volume) * 0.28);
     const rhythmStroke = mixRgba(color, rhythmColor, clamp01(this.beatImpulse * activity));
 
     if (this.rhythmRing) {
       setCircleRadius(this.rhythmRing, radius);
       this.rhythmRing.style.stroke = rgbaColor(rhythmStroke);
-      this.rhythmRing.style.opacity = `${lerp(baseBrightness * IDLE_OPACITY_LAYER_ONE, Math.min(1, ringOpacity), activity)}`;
+      this.rhythmRing.style.opacity = `${RING_BODY_OPACITY_LAYER_ONE}`;
       this.rhythmRing.style.filter = dropShadow(rhythmStroke, 10);
     }
 
@@ -276,7 +273,7 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
     color: Rgba,
     radius: number,
     activity: number,
-    idleOpacity: number,
+    layerOpacity: number,
   ): void {
     if (!ring) {
       return;
@@ -286,7 +283,7 @@ class ThreeLayerRingAnimation implements VisualizerAnimation {
     const glow = normalized * activity;
     setCircleRadius(ring, radius);
     ring.style.stroke = rgbaColor(mixRgba(color, [255, 255, 255, color[3]], glow * 0.18));
-    ring.style.opacity = `${lerp(idleOpacity, 0.22 + normalized * 0.68, activity)}`;
+    ring.style.opacity = `${layerOpacity}`;
     ring.style.filter = glow > 0.015
       ? dropShadow(color, 2 + glow * (SPECTRUM_GLOW_MAX_BLUR - 2))
       : "";

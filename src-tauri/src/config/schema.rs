@@ -173,11 +173,6 @@ impl ColorSetting {
             alpha,
         }
     }
-
-    fn with_alpha(mut self, alpha: f32) -> Self {
-        self.alpha = alpha.clamp(0.0, 1.0);
-        self
-    }
 }
 
 impl Default for ColorSetting {
@@ -191,14 +186,14 @@ impl Default for ColorSetting {
 #[serde(default)]
 pub struct AnimationCommonSettings {
     pub response_strength: f32,
-    pub base_brightness: f32,
+    pub opacity: f32,
 }
 
 impl Default for AnimationCommonSettings {
     fn default() -> Self {
         Self {
             response_strength: 1.0,
-            base_brightness: 0.55,
+            opacity: 1.0,
         }
     }
 }
@@ -213,24 +208,13 @@ pub struct ThreeLayerRingColors {
     pub high_energy: ColorSetting,
 }
 
-impl ThreeLayerRingColors {
-    fn with_legacy_alpha(self, alpha: f32) -> Self {
-        Self {
-            idle: self.idle.with_alpha(alpha),
-            rhythm: self.rhythm.with_alpha(alpha),
-            low_energy: self.low_energy.with_alpha(alpha),
-            high_energy: self.high_energy.with_alpha(alpha),
-        }
-    }
-}
-
 impl Default for ThreeLayerRingColors {
     fn default() -> Self {
         Self {
-            idle: ColorSetting::new("#42d6b5", 0.56),
-            rhythm: ColorSetting::new("#f8c15c", 0.94),
-            low_energy: ColorSetting::new("#42d6b5", 0.88),
-            high_energy: ColorSetting::new("#ff528e", 0.96),
+            idle: ColorSetting::new("#42d6b5", 1.0),
+            rhythm: ColorSetting::new("#f8c15c", 1.0),
+            low_energy: ColorSetting::new("#42d6b5", 1.0),
+            high_energy: ColorSetting::new("#ff528e", 1.0),
         }
     }
 }
@@ -241,8 +225,6 @@ impl Default for ThreeLayerRingColors {
 pub struct ThreeLayerRingSettings {
     #[serde(default, rename = "responseStrength", skip_serializing)]
     legacy_response_strength: Option<f32>,
-    #[serde(default, rename = "baseBrightness", skip_serializing)]
-    legacy_base_brightness: Option<f32>,
     pub rhythm_pulse: f32,
     pub spectrum_sensitivity: f32,
     pub colors: ThreeLayerRingColors,
@@ -252,7 +234,6 @@ impl Default for ThreeLayerRingSettings {
     fn default() -> Self {
         Self {
             legacy_response_strength: None,
-            legacy_base_brightness: None,
             rhythm_pulse: 1.0,
             spectrum_sensitivity: 1.0,
             colors: ThreeLayerRingColors::default(),
@@ -263,14 +244,17 @@ impl Default for ThreeLayerRingSettings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RainbowBallStyle {
-    Cool,
-    Aurora,
-    Twilight,
+    OpalCurrent,
+    BiolumeLagoon,
+    PlumNebula,
+    SolarJelly,
+    JadeSmoke,
+    VioletAlloy,
 }
 
 impl Default for RainbowBallStyle {
     fn default() -> Self {
-        Self::Cool
+        Self::OpalCurrent
     }
 }
 
@@ -293,7 +277,7 @@ impl Default for SolidSpectrumCircleSettings {
             rhythm_pulse: 1.0,
             spectrum_sensitivity: 1.0,
             wave_height: 1.0,
-            rainbow_style: RainbowBallStyle::Cool,
+            rainbow_style: RainbowBallStyle::OpalCurrent,
             rotation_enabled: true,
             rotation_speed: 1.0,
             rotation_angle: 0.0,
@@ -325,8 +309,6 @@ impl Default for AnimationSettings {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct AppSettings {
-    #[serde(default, rename = "opacity", skip_serializing)]
-    legacy_opacity: Option<f32>,
     pub mouse_passthrough: bool,
     pub start_with_windows: bool,
     pub floating_corner: FloatingCorner,
@@ -340,7 +322,6 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            legacy_opacity: None,
             mouse_passthrough: false,
             start_with_windows: false,
             floating_corner: FloatingCorner::BottomRight,
@@ -364,23 +345,7 @@ impl AppSettings {
             self.animation_settings.common.response_strength = value;
         }
 
-        if let Some(value) = self
-            .animation_settings
-            .three_layer_ring
-            .legacy_base_brightness
-            .take()
-        {
-            self.animation_settings.common.base_brightness = value;
-        }
-
-        if let Some(alpha) = self.legacy_opacity {
-            self.animation_settings.three_layer_ring.colors = self
-                .animation_settings
-                .three_layer_ring
-                .colors
-                .with_legacy_alpha(alpha);
-            self.legacy_opacity = None;
-        }
+        self.animation_settings.common.opacity = self.animation_settings.common.opacity.clamp(0.0, 1.0);
 
         self
     }

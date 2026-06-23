@@ -42,7 +42,7 @@ export type ColorSetting = {
 
 export type AnimationCommonSettings = {
   responseStrength: number;
-  baseBrightness: number;
+  opacity: number;
 };
 
 export type ThreeLayerRingColors = {
@@ -58,7 +58,13 @@ export type ThreeLayerRingSettings = {
   colors: ThreeLayerRingColors;
 };
 
-export type RainbowBallStyle = "cool" | "aurora" | "twilight";
+export type RainbowBallStyle =
+  | "opal-current"
+  | "biolume-lagoon"
+  | "plum-nebula"
+  | "solar-jelly"
+  | "jade-smoke"
+  | "violet-alloy";
 
 export type SolidSpectrumCircleSettings = {
   rhythmPulse: number;

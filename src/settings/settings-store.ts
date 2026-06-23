@@ -2,6 +2,7 @@ import type {
   AnimationCommonSettings,
   AnimationType,
   AppSettings,
+  RainbowBallStyle,
   SolidSpectrumCircleSettings,
   ThreeLayerRingSettings,
 } from "../ipc/types";
@@ -13,7 +14,7 @@ export const FLOATING_SIZE_DEFAULT = 360;
 export function createDefaultAnimationCommonSettings(): AnimationCommonSettings {
   return {
     responseStrength: 1,
-    baseBrightness: 0.55,
+    opacity: 1,
   };
 }
 
@@ -24,19 +25,19 @@ export function createDefaultThreeLayerRingSettings(): ThreeLayerRingSettings {
     colors: {
       idle: {
         color: "#42d6b5",
-        alpha: 0.56,
+        alpha: 1,
       },
       rhythm: {
         color: "#f8c15c",
-        alpha: 0.94,
+        alpha: 1,
       },
       lowEnergy: {
         color: "#42d6b5",
-        alpha: 0.88,
+        alpha: 1,
       },
       highEnergy: {
         color: "#ff528e",
-        alpha: 0.96,
+        alpha: 1,
       },
     },
   };
@@ -47,7 +48,7 @@ export function createDefaultSolidSpectrumCircleSettings(): SolidSpectrumCircleS
     rhythmPulse: 1,
     spectrumSensitivity: 1,
     waveHeight: 1,
-    rainbowStyle: "cool",
+    rainbowStyle: "opal-current",
     rotationEnabled: true,
     rotationSpeed: 1,
     rotationAngle: 0,
@@ -77,14 +78,13 @@ export function createDefaultSettings(): AppSettings {
 
 export function normalizeSettings(settings: AppSettings): AppSettings {
   const defaults = createDefaultSettings();
-  const candidate = settings as AppSettings & { opacity?: number; floatingSize?: number | string };
-  type LegacyRingSettings = Partial<ThreeLayerRingSettings & AnimationCommonSettings>;
+  const candidate = settings as AppSettings & { floatingSize?: number | string };
+  type LegacyRingSettings = Partial<ThreeLayerRingSettings & Pick<AnimationCommonSettings, "responseStrength">>;
   const commonSettings = candidate.animationSettings?.common;
   const ringSettings = candidate.animationSettings?.["three-layer-ring"] as LegacyRingSettings | undefined;
   const circleSettings = candidate.animationSettings?.["rainbow-ball"];
   const {
     responseStrength: legacyResponseStrength,
-    baseBrightness: legacyBaseBrightness,
     ...ringSpecificSettings
   } = ringSettings ?? {};
   const normalizedCommon = {
@@ -93,9 +93,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     responseStrength: commonSettings?.responseStrength
       ?? legacyResponseStrength
       ?? defaults.animationSettings.common.responseStrength,
-    baseBrightness: commonSettings?.baseBrightness
-      ?? legacyBaseBrightness
-      ?? defaults.animationSettings.common.baseBrightness,
+    opacity: clamp01(commonSettings?.opacity ?? defaults.animationSettings.common.opacity),
   };
   const normalizedRing = {
     ...defaults.animationSettings["three-layer-ring"],
@@ -108,17 +106,8 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
   const normalizedCircle = {
     ...defaults.animationSettings["rainbow-ball"],
     ...circleSettings,
+    rainbowStyle: normalizeRainbowBallStyle(circleSettings?.rainbowStyle),
   };
-
-  if (typeof candidate.opacity === "number" && !ringSettings) {
-    const legacyAlpha = clamp01(candidate.opacity);
-    normalizedRing.colors = {
-      idle: { ...normalizedRing.colors.idle, alpha: legacyAlpha },
-      rhythm: { ...normalizedRing.colors.rhythm, alpha: legacyAlpha },
-      lowEnergy: { ...normalizedRing.colors.lowEnergy, alpha: legacyAlpha },
-      highEnergy: { ...normalizedRing.colors.highEnergy, alpha: legacyAlpha },
-    };
-  }
 
   return {
     ...defaults,
@@ -144,6 +133,20 @@ function normalizeAnimationType(value: unknown): AnimationType {
   return value === "rainbow-ball" || value === "three-layer-ring"
     ? value
     : "three-layer-ring";
+}
+
+export function normalizeRainbowBallStyle(value: unknown): RainbowBallStyle {
+  switch (value) {
+    case "opal-current":
+    case "biolume-lagoon":
+    case "plum-nebula":
+    case "solar-jelly":
+    case "jade-smoke":
+    case "violet-alloy":
+      return value;
+    default:
+      return "opal-current";
+  }
 }
 
 function normalizeFloatingSize(value: number | string | undefined): number {
