@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default CatMusic window permissions","local":true,"windows":["main","settings","debug"],"permissions":["core:default","core:window:allow-start-dragging"]}}

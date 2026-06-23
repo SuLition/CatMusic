@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+.agents/
+.codex/
+.codex_video_frames/
+.idea/
+*.log
+*.tmp

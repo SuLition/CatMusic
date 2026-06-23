@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CatMusic",
+  "version": "0.1.0",
+  "identifier": "com.local.catmusic",
+  "build": {
+    "beforeDevCommand": "npm run web:dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "CatMusic",
+        "width": 360,
+        "height": 360,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "CatMusic Contributors",
+    "icon": ["icons/icon.ico"],
+    "copyright": "Copyright (c) 2026 CatMusic Contributors",
+    "category": "Music",
+    "shortDescription": "Windows desktop music visualizer",
+    "longDescription": "CatMusic is a Windows desktop music visualizer with a floating transparent overlay, audio-reactive ring animation, tray controls, and local settings persistence.",
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "startMenuFolder": "CatMusic"
+      }
+    }
+  }
+}
